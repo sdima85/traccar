@@ -37,7 +37,7 @@ public class WialonProtocolDecoder extends BaseProtocolDecoder {
 
     private Long deviceId;
     private String deviceImei;
-    private String dataBase;
+    private String tableName;
     
 
     public WialonProtocolDecoder(DataManager dataManager, String protocol, Properties properties) {
@@ -80,7 +80,7 @@ public class WialonProtocolDecoder extends BaseProtocolDecoder {
         Position position = new Position();
         ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
         position.setDeviceId(deviceId);
-        position.setDataBase(dataBase);
+        position.setTableName(tableName);
         position.setImei(deviceImei);
 
         Integer index = 1;
@@ -161,7 +161,7 @@ public class WialonProtocolDecoder extends BaseProtocolDecoder {
                 Device device = getDataManager().getDeviceByImei(imei);
                 deviceImei = imei;
                 deviceId = device.getId();
-                dataBase = device.getDataBase();
+                tableName = device.getTableName();
                 sendResponse(channel, "#AL#", 1);
             } catch(Exception error) {
                 Log.warning("Unknown device - " + imei);

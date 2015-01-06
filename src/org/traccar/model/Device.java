@@ -76,14 +76,14 @@ public class Device {
     /**
      * DataBase имя базы для вставки и обновлений координат
      */
-    private String dataBase;
+    private String tablename;
 
-    public String getDataBase() {        
-        return ((dataBase != null && !dataBase.isEmpty())?dataBase:"");
+    public String getTableName() {        
+        return ((tablename != null && !tablename.isEmpty())?tablename:"");
     }
 
-    public void setDataBase(String dataBase) {
-        this.dataBase = dataBase;
+    public void setTableName(String tablename) {
+        this.tablename = tablename;
     }
     
 }

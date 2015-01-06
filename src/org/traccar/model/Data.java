@@ -77,14 +77,14 @@ public class Data {
     /**
      * DataBase for position insert/update
      */
-    private String dataBase;
+    private String tableName;
 
-    public String getDataBase() {
-        return dataBase;
+    public String getTableName() {
+        return tableName;
     }
 
-    public void setDataBase(String dataBase) {
-        this.dataBase = dataBase;
+    public void setTableName(String tableName) {
+        this.tableName = tableName;
     }
 
     

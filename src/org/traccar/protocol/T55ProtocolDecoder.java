@@ -35,7 +35,7 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
 
     private Long deviceId;
     private String deviceImei;
-    private String dataBase;
+    private String tableName;
 
     public T55ProtocolDecoder(DataManager dataManager, String protocol, Properties properties) {
         super(dataManager, protocol, properties);
@@ -92,7 +92,7 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
             Device device = getDataManager().getDeviceByImei(id);
             deviceImei = id;
             deviceId = device.getId();
-            dataBase = device.getDataBase();
+            tableName = device.getTableName();
             
         } catch(Exception error) {
             Log.warning("Unknown device - " + id);
@@ -159,7 +159,7 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
             Position position = new Position();
             ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
             position.setDeviceId(deviceId);
-            position.setDataBase(dataBase);
+            position.setTableName(tableName);
             position.setImei(deviceImei);
 
             Integer index = 1;
@@ -228,7 +228,7 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
             Position position = new Position();
             ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
             position.setDeviceId(deviceId);
-            position.setDataBase(dataBase);
+            position.setTableName(tableName);
             position.setImei(deviceImei);
 
             Integer index = 1;
@@ -282,7 +282,7 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
             Position position = new Position();
             ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
             position.setDeviceId(deviceId);
-            position.setDataBase(dataBase);
+            position.setTableName(tableName);
             position.setImei(deviceImei);
 
             Integer index = 1;
@@ -341,7 +341,7 @@ public class T55ProtocolDecoder extends BaseProtocolDecoder {
             Position position = new Position();
             ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
             position.setDeviceId(deviceId);
-            position.setDataBase(dataBase);
+            position.setTableName(tableName);
             position.setImei(deviceImei);
 
             Integer index = 1;

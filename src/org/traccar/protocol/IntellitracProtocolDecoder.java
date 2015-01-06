@@ -89,7 +89,7 @@ public class IntellitracProtocolDecoder extends BaseProtocolDecoder {
             Device device = getDataManager().getDeviceByImei(id);
             position.setDeviceId(device.getId());
             position.setImei(id);
-            position.setDataBase(device.getDataBase());
+            position.setTableName(device.getTableName());
         } catch(Exception error) {
             Log.warning("Unknown device - " + id);
             return null;

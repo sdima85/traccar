@@ -37,7 +37,7 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
     
     private long deviceId;
     private String deviceImei;
-    private String dataBase;
+    private String tableName;
 
     public TeltonikaProtocolDecoder(DataManager dataManager, String protocol, Properties properties) {
         super(dataManager, protocol, properties);
@@ -52,7 +52,7 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             Device device = getDataManager().getDeviceByImei(imei);
             deviceImei = imei;
             deviceId = device.getId();
-            dataBase = device.getDataBase();
+            tableName = device.getTableName();
             
             result = true;
         } catch(Exception error) {
@@ -94,7 +94,7 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
             
             position.setDeviceId(deviceId);
-            position.setDataBase(dataBase);
+            position.setTableName(tableName);
             position.setImei(deviceImei);
             
             int globalMask = 0x0f;

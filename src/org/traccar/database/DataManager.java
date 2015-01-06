@@ -136,7 +136,7 @@ public class DataManager {
             }
             //Имя базы для вставки/обновления позиции
             try{
-                device.setDataBase(rs.getString("database"));
+                device.setTableName(rs.getString("tablename"));
             } catch (SQLException e) {
                 
             }
@@ -220,7 +220,7 @@ public class DataManager {
         params.setString("imei", position.getImei());
         params.setTimestamp("systemtime", position.getServerTime());
         
-        params.setDataBase(position.getDataBase());
+        params.setTableName(position.getTableName());
         
         if(this.getStyleInfo().equals("xml")){
 
