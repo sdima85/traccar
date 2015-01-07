@@ -28,6 +28,7 @@ import org.jboss.netty.channel.ChannelHandlerContext;
 
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.database.DataManager;
+import org.traccar.helper.ChannelBufferTools;
 import org.traccar.helper.Crc;
 import org.traccar.helper.Log;
 import org.traccar.model.Device;
@@ -235,7 +236,7 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             
             channel.write(response2);
             
-            Log.debug("Response="+response2.toString());
+            Log.debug("Response="+ChannelBufferTools.readHexString(response2,10));
         }
         
         return positions;
@@ -247,7 +248,7 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
         
         ChannelBuffer buf = (ChannelBuffer) msg;
         
-        Log.debug("Read="+buf.toString());
+        Log.debug("Read="+ ChannelBufferTools.readHexString(buf,buf.readableBytes()));
         
         if (buf.getUnsignedShort(0) > 0) {
             parseIdentification(channel, buf);

@@ -110,7 +110,7 @@ public class DataManager {
         }
 
         query = properties.getProperty("database.updateLatestPosition");
-        if ((query != null) && (!query.isEmpty())) {
+        if (query != null) {
             queryUpdateLatestPosition = new NamedParameterStatement(query, dataSource);
         }
         
