@@ -63,7 +63,7 @@ public class ExtendedInfoFormatter {
     
     
     public String getStyle(String format){
-        if(format.toLowerCase().trim().equals("xml")){
+        if((format==null) || (format.toLowerCase().trim().equals("xml"))){
             return this.toString();
         }
         else if(format.toLowerCase().trim().equals("quant")){

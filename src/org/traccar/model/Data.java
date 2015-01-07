@@ -54,7 +54,7 @@ public class Data {
     private Date serverTime;
 
     public Date getServerTime() {
-        return (serverTime!=null?serverTime:new Date());
+        return (serverTime!=null ? serverTime : new Date());
     }
 
     public void setServerTime(Date serverTime) {
@@ -75,7 +75,7 @@ public class Data {
     }
     
     /**
-     * DataBase for position insert/update
+     * TableName for position insert
      */
     private String tableName;
 
@@ -86,7 +86,6 @@ public class Data {
     public void setTableName(String tableName) {
         this.tableName = tableName;
     }
-
     
     /**
      * Device IMEI

@@ -28,6 +28,7 @@ import org.jboss.netty.channel.ChannelHandlerContext;
 
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.database.DataManager;
+import org.traccar.helper.Crc;
 import org.traccar.helper.Log;
 import org.traccar.model.Device;
 import org.traccar.model.ExtendedInfoFormatter;
@@ -213,6 +214,28 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             ChannelBuffer response = ChannelBuffers.directBuffer(4);
             response.writeInt(count);
             channel.write(response);
+            
+            //
+            ChannelBuffer response2 = ChannelBuffers.directBuffer(10);
+            
+            //1 - 2 байта = 0x0000
+            response2.writeShort(0x0000);
+            //2 - Длина данных 2 байта без CRC16 = 0x04
+            response2.writeShort(0x0004);
+            //Данные
+            //3 - Кол-во пакетов 1 байт = 0x01
+            response.writeByte(0x01);
+            //32 Конфигурационный пакет от сервера – запрос значения параметра
+            //4 - ID пакета 1 байт = 0x20
+            response.writeByte(0x20);
+            //5 - Параметр 2 байта (имя сервера) = 0x00F5
+            response2.writeShort(0x00F5);
+            //5 - CRC16 2 байта (с №3 ПО №4 включительно) =             
+            response2.writeShort(Crc.crc16_A001(response2.toByteBuffer(4, 4)));
+            
+            channel.write(response2);
+            
+            Log.debug("Response="+response2.toString());
         }
         
         return positions;
@@ -223,6 +246,8 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             throws Exception {
         
         ChannelBuffer buf = (ChannelBuffer) msg;
+        
+        Log.debug("Read="+buf.toString());
         
         if (buf.getUnsignedShort(0) > 0) {
             parseIdentification(channel, buf);

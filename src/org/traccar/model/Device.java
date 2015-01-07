@@ -74,16 +74,16 @@ public class Device {
 
     
     /**
-     * DataBase имя базы для вставки и обновлений координат
+     * tableName имя таблицы для вставки координат
      */
-    private String tablename;
+    private String tableName;
 
     public String getTableName() {        
-        return ((tablename != null && !tablename.isEmpty())?tablename:"");
+        return ((tableName != null) ? tableName : "");
     }
 
-    public void setTableName(String tablename) {
-        this.tablename = tablename;
+    public void setTableName(String tableName) {
+        this.tableName = tableName;
     }
     
 }

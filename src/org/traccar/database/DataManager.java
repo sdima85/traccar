@@ -134,11 +134,11 @@ public class DataManager {
             } catch (SQLException e) {
                 
             }
-            //Имя базы для вставки/обновления позиции
+            //Имя таблицы для вставки/обновления позиции
             try{
                 device.setTableName(rs.getString("tablename"));
             } catch (SQLException e) {
-                
+                device.setTableName("");
             }
             //
             return device;
@@ -187,8 +187,7 @@ public class DataManager {
     };
 
     public synchronized Long addPosition(Position position) throws SQLException {
-        if (queryAddPosition != null) {
-            
+        if (queryAddPosition != null) {            
             
             List<Long> result = assignVariables(queryAddPosition.prepare(), position).executeUpdate(generatedKeysResultSetProcessor);
             if (result != null && !result.isEmpty()) {

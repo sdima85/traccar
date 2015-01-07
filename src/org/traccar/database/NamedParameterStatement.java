@@ -19,7 +19,6 @@ import javax.sql.DataSource;
 import java.sql.*;
 import java.util.*;
 import java.util.Date;
-import org.traccar.helper.Log;
 
 public class NamedParameterStatement {
 
@@ -188,8 +187,6 @@ public class NamedParameterStatement {
                             case Types.BOOLEAN:
                                 stmt.setBoolean(index, (Boolean) value);
                                 break;
-                            //  stmt.set  
-                            //Types.OTHER
                         }
                     }
                 }

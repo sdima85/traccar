@@ -45,6 +45,7 @@ public class TrackerEventHandler extends IdleStateAwareChannelHandler {
         } else {
             StringBuilder s = new StringBuilder();
             s.append("device: ").append(position.getDeviceId()).append(", ");
+            s.append("imei: ").append(position.getImei()).append(", ");            
             s.append("time: ").append(position.getTime()).append(", ");
             s.append("lat: ").append(position.getLatitude()).append(", ");
             s.append("lon: ").append(position.getLongitude());
@@ -57,9 +58,7 @@ public class TrackerEventHandler extends IdleStateAwareChannelHandler {
             id = dataManager.addPosition(position);
         } catch (Exception error) {
             Log.warning(error);
-            //Log.warning("IMEI: "+position.getImei());
-            //Log.warning("DataBase: "+position.getDataBase());
-            //Log.warning("ExtendedInfo: "+position.getExtendedInfo());
+            
         }
         return id;
     }
