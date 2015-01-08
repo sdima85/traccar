@@ -158,7 +158,7 @@ public class Crc {
     }
     
     public static int crc16_A001(ByteBuffer buf) {
-        return crc16Reflected(buf, 0x0000, crc16_A001_Table) ^ crc16CcittXorout;
+        return crc16Reflected(buf, 0x0000, crc16_A001_Table);// ^ crc16CcittXorout;
     }
 
     public static int crc16Ccitt(ByteBuffer buf) {

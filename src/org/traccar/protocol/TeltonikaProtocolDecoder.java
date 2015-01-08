@@ -65,6 +65,29 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             ChannelBuffer response = ChannelBuffers.directBuffer(1);
             response.writeByte(result ? 1 : 0);
             channel.write(response);
+            
+            //
+            ChannelBuffer response2 = ChannelBuffers.directBuffer(10);
+            
+            //1 - 2 байта = 0x0000
+            response2.writeShort(0x0000);
+            //2 - Длина данных 2 байта без CRC16 = 0x04
+            response2.writeShort(0x0004);
+            //Данные
+            //3 - Кол-во пакетов 1 байт = 0x01
+            response2.writeByte(0x01);
+            //32 Конфигурационный пакет от сервера – запрос значения параметра
+            //4 - ID пакета 1 байт = 0x20
+            response2.writeByte(0x20);
+            //5 - Параметр 2 байта (имя сервера) = 0x00F5
+            response2.writeShort(0x00F5);
+            //5 - CRC16 2 байта (с №3 ПО №4 включительно) =             
+            response2.writeShort(Crc.crc16_A001(response2.toByteBuffer(4, 4)));
+            //0000 0004 01 20 00f5 71c0 +++
+            //0000 0015 01 21 00f5 10 62692e7175616e742e6e65742e756100 ad11
+
+            channel.write(response2);
+            Log.debug("Response="+ChannelBufferTools.readHexString(response2,10*2));
         }
     }
 
@@ -215,28 +238,6 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             ChannelBuffer response = ChannelBuffers.directBuffer(4);
             response.writeInt(count);
             channel.write(response);
-            
-            //
-            ChannelBuffer response2 = ChannelBuffers.directBuffer(10);
-            
-            //1 - 2 байта = 0x0000
-            response2.writeShort(0x0000);
-            //2 - Длина данных 2 байта без CRC16 = 0x04
-            response2.writeShort(0x0004);
-            //Данные
-            //3 - Кол-во пакетов 1 байт = 0x01
-            response.writeByte(0x01);
-            //32 Конфигурационный пакет от сервера – запрос значения параметра
-            //4 - ID пакета 1 байт = 0x20
-            response.writeByte(0x20);
-            //5 - Параметр 2 байта (имя сервера) = 0x00F5
-            response2.writeShort(0x00F5);
-            //5 - CRC16 2 байта (с №3 ПО №4 включительно) =             
-            response2.writeShort(Crc.crc16_A001(response2.toByteBuffer(4, 4)));
-            
-            channel.write(response2);
-            
-            Log.debug("Response="+ChannelBufferTools.readHexString(response2,10));
         }
         
         return positions;
@@ -248,11 +249,31 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
         
         ChannelBuffer buf = (ChannelBuffer) msg;
         
-        Log.debug("Read="+ ChannelBufferTools.readHexString(buf,buf.readableBytes()));
-        
-        if (buf.getUnsignedShort(0) > 0) {
+        if ((buf.getUnsignedShort(0)==0)&&(buf.getUnsignedShort(2)>0)){
+            //0000 0015 01 21 00f5 10 62692e7175616e742e6e65742e756100 ad11
+            Log.debug("config");
+            buf.skipBytes(2); //
+            buf.readUnsignedShort(); // data length
+            int count = buf.readUnsignedByte(); // count
+            
+            for(int i = 0; i < count; i++){
+                int codec = buf.readUnsignedByte(); // codec
+                //Ответ серверу на запрос значения параметра
+                if(codec == 33){
+                    int paramId = buf.readUnsignedShort();
+                    int length = buf.readUnsignedByte();
+                    String paramVal = buf.toString(buf.readerIndex(), length-1, Charset.defaultCharset());
+                    
+                    Log.debug("codec="+codec+" paramId="+paramId+" paramVal="+paramVal);
+                }
+            }
+            
+        } else if (buf.getUnsignedShort(0) > 0) {
+            Log.debug("parseIdentification");
             parseIdentification(channel, buf);
-        } else {
+        }
+        else {
+            Log.debug("parseLocation");
             return parseLocation(channel, buf);
         }
         
