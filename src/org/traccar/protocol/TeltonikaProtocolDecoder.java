@@ -67,27 +67,40 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             channel.write(response);
             
             //
-            ChannelBuffer response2 = ChannelBuffers.directBuffer(10);
+            int count=7; //+
+            ChannelBuffer response2 = ChannelBuffers.directBuffer(count + (2 * 3));
             
             //1 - 2 байта = 0x0000
             response2.writeShort(0x0000);
             //2 - Длина данных 2 байта без CRC16 = 0x04
-            response2.writeShort(0x0004);
+            //response2.writeShort(0x0004);
+            response2.writeShort(0x0007);
             //Данные
             //3 - Кол-во пакетов 1 байт = 0x01
-            response2.writeByte(0x01);
+            //response2.writeByte(0x01);
+            response2.writeByte(0x02);
+            
+            
             //32 Конфигурационный пакет от сервера – запрос значения параметра
             //4 - ID пакета 1 байт = 0x20
             response2.writeByte(0x20);
             //5 - Параметр 2 байта (имя сервера) = 0x00F5
             response2.writeShort(0x00F5);
-            //5 - CRC16 2 байта (с №3 ПО №4 включительно) =             
-            response2.writeShort(Crc.crc16_A001(response2.toByteBuffer(4, 4)));
+            
+            //Посылка №2
+            //4 - ID пакета 1 байт = 0x20
+            response2.writeByte(0x20);
+            //5 - Параметр 2 байта (порт сервера) = 0x00F5
+            response2.writeShort(0x00F6);
+            
+            
+            //6 - CRC16 2 байта (с №3 ПО №5 включительно) =             
+            response2.writeShort(Crc.crc16_A001(response2.toByteBuffer(4, 7)));
             //0000 0004 01 20 00f5 71c0 +++
             //0000 0015 01 21 00f5 10 62692e7175616e742e6e65742e756100 ad11
 
             channel.write(response2);
-            Log.debug("Response="+ChannelBufferTools.readHexString(response2,10*2));
+            Log.debug("Response="+ChannelBufferTools.readHexString(response2,13*2));
         }
     }
 
@@ -261,8 +274,10 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
                 //Ответ серверу на запрос значения параметра
                 if(codec == 33){
                     int paramId = buf.readUnsignedShort();
-                    int length = buf.readUnsignedByte();
-                    String paramVal = buf.toString(buf.readerIndex(), length-1, Charset.defaultCharset());
+                    int length = buf.readUnsignedByte();                    
+                    String paramVal=getReadFromIdConfig(buf, paramId, length);
+                    
+                    
                     
                     Log.debug("codec="+codec+" paramId="+paramId+" paramVal="+paramVal);
                 }
@@ -280,4 +295,52 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
         return null;
     }
 
+    private String getReadFromIdConfig(ChannelBuffer buf, int paramId, int length){
+        String paramVal="";
+        switch (paramId) {
+            case 242://Точка доступа GPRS ( по умолчанию 3g.utel.ua )
+            case 243://Логин доступа GPRS ( по умолчанию не установлен. )
+            case 244://Пароль доступа GPRS ( по умолчанию не установлен. )
+            case 245://server
+            case 252://Логин доступа по СМС
+            case 253://Пароль доступа по СМС
+            case 261://Авторизированный телефонный номер
+            case 262://
+            case 263://
+            case 264://
+            case 265://
+            case 266://
+            case 267://
+            case 268://
+            case 269://Авторизированный телефонный номер
+
+            paramVal = buf.toString(buf.readerIndex(), length-1, Charset.defaultCharset());
+            break;
+
+            case 11://Период съёма по времени при выключенном зажигании ( по умолчанию 30 сек)
+            case 12://Период съёма по расстоянию ( по умолчанию 500 м)
+            case 13://Период съёма по азимуту ( по умолчанию 10° )
+            case 232://Кол-во записей в пакете ( по умолчанию 0 )
+            case 246://port
+            case 284://Таймаут начала движения по акселерометру ( по умолчанию 20*0,1=2сек.)
+            case 285://Таймаут остановка движения по акселерометру ( по умолчанию 50 *0,1=5сек.)
+            case 270://Период передачи данных на сервер ( по умолчанию 60 сек)
+            case 903://Период съёма по времени при включенном зажигании ( по умолчанию 30 сек)
+            case 905://Период ожидания между попытками в серии ( по умолчанию 60 сек)
+            paramVal = ""+buf.readUnsignedShort();
+            break;
+
+            case 281://Угол отклонения акселерометра по оси X ( по умолчанию 3°)
+            case 282://Y
+            case 283://Z
+            case 900://Разрешение съёма по времени ( по умолчанию 1)
+            case 901://Разрешение съёма по расстоянию    
+            case 902://Разрешение съёма по азимуту ( по умолчанию 1)
+            case 904://Кол-во попыток в серии соединения с сервером ( по умолчанию 3)
+
+            paramVal = ""+buf.readUnsignedByte();
+            break;
+        }
+        return paramVal;
+    }
 }
