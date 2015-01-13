@@ -21,6 +21,7 @@ import org.jboss.netty.handler.timeout.IdleStateAwareChannelHandler;
 import org.jboss.netty.handler.timeout.IdleStateEvent;
 import org.traccar.helper.Log;
 import org.traccar.database.DataManager;
+import org.traccar.model.DeviceCommand;
 import org.traccar.model.Position;
 
 /**
@@ -62,6 +63,29 @@ public class TrackerEventHandler extends IdleStateAwareChannelHandler {
         }
         return id;
     }
+    
+    private void processSingleCommand(DeviceCommand command) {
+        if (command == null) {
+            Log.info("processSingleCommand null message");
+        } else {
+            StringBuilder s = new StringBuilder();
+            s.append("device: ").append(command.getDeviceId()).append(", ");
+            s.append("imei: ").append(command.getImei()).append(", ");            
+            s.append("time: ").append(command.getCommandTime()).append(", ");
+            s.append("data: ").append(command.getData());
+            Log.info(s.toString());
+        }
+
+        // Write command to database
+        Long id = null;
+        try {
+            id = dataManager.addCommand(command);
+        } catch (Exception error) {
+            Log.warning(error);
+            
+        }
+        //return id;
+    }
 
     @Override
     public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) {
@@ -71,12 +95,26 @@ public class TrackerEventHandler extends IdleStateAwareChannelHandler {
             id = processSinglePosition((Position) e.getMessage());
             lastPostition = (Position) e.getMessage();
         } else if (e.getMessage() instanceof List) {
-            List<Position> positions = (List<Position>) e.getMessage();
-            for (Position position : positions) {
-                id = processSinglePosition(position);
-                lastPostition = position;
+            
+            List<Object> datas = (List<Object>) e.getMessage();
+            for (Object data : (List<Object>)datas){
+                if (data instanceof Position){
+                    id = processSinglePosition((Position)data);
+                    lastPostition = (Position)data;
+                }else if(data instanceof DeviceCommand){
+                    processSingleCommand((DeviceCommand) data);
+                }
             }
+            
+            //List<Position> positions = (List<Position>) e.getMessage();
+            //for (Position position : positions) {
+            //    id = processSinglePosition(position);
+            //    lastPostition = position;
+            //}
+        } else if (e.getMessage() instanceof DeviceCommand) {
+            processSingleCommand((DeviceCommand) e.getMessage());
         }
+        
         if (id != null && lastPostition != null) {
             try {
                 dataManager.updateLatestPosition(lastPostition, id);

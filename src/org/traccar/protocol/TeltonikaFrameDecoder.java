@@ -42,10 +42,10 @@ public class TeltonikaFrameDecoder extends FrameDecoder {
                 return buf.readBytes(length + 2);
             }
         } else if((length==0) && (buf.getUnsignedShort(buf.readerIndex()+2)>0)) {
-            //config            
+            // Config packet
             int dataLength = buf.getUnsignedShort(buf.readerIndex() + 2);
-            if (buf.readableBytes() >= (dataLength + 2)) {
-                return buf.readBytes(dataLength + 2);
+            if (buf.readableBytes() >= (dataLength + 6)) {
+                return buf.readBytes(dataLength + 6);
             }
         } else {
             int dataLength = buf.getInt(buf.readerIndex() + 4);

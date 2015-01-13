@@ -32,6 +32,7 @@ import org.traccar.helper.ChannelBufferTools;
 import org.traccar.helper.Crc;
 import org.traccar.helper.Log;
 import org.traccar.model.Device;
+import org.traccar.model.DeviceCommand;
 import org.traccar.model.ExtendedInfoFormatter;
 import org.traccar.model.Position;
 
@@ -66,41 +67,7 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             response.writeByte(result ? 1 : 0);
             channel.write(response);
             
-            //
-            int count=7; //+
-            ChannelBuffer response2 = ChannelBuffers.directBuffer(count + (2 * 3));
-            
-            //1 - 2 байта = 0x0000
-            response2.writeShort(0x0000);
-            //2 - Длина данных 2 байта без CRC16 = 0x04
-            //response2.writeShort(0x0004);
-            response2.writeShort(0x0007);
-            //Данные
-            //3 - Кол-во пакетов 1 байт = 0x01
-            //response2.writeByte(0x01);
-            response2.writeByte(0x02);
-            
-            
-            //32 Конфигурационный пакет от сервера – запрос значения параметра
-            //4 - ID пакета 1 байт = 0x20
-            response2.writeByte(0x20);
-            //5 - Параметр 2 байта (имя сервера) = 0x00F5
-            response2.writeShort(0x00F5);
-            
-            //Посылка №2
-            //4 - ID пакета 1 байт = 0x20
-            response2.writeByte(0x20);
-            //5 - Параметр 2 байта (порт сервера) = 0x00F5
-            response2.writeShort(0x00F6);
-            
-            
-            //6 - CRC16 2 байта (с №3 ПО №5 включительно) =             
-            response2.writeShort(Crc.crc16_A001(response2.toByteBuffer(4, 7)));
-            //0000 0004 01 20 00f5 71c0 +++
-            //0000 0015 01 21 00f5 10 62692e7175616e742e6e65742e756100 ad11
-
-            channel.write(response2);
-            Log.debug("Response="+ChannelBufferTools.readHexString(response2,13*2));
+            sendCommand(channel);
         }
     }
 
@@ -112,6 +79,44 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
     private static final int CODEC_GH3000 = 0x07;
     private static final int CODEC_FM4X00 = 0x08;
     private static final int CODEC_12 = 0x0C;
+    
+    private void sendCommand(Channel channel){
+        //
+        int count=7; //+
+        ChannelBuffer response2 = ChannelBuffers.directBuffer(count + (2 * 3));
+
+        //1 - 2 байта = 0x0000
+        response2.writeShort(0x0000);
+        //2 - Длина данных 2 байта без CRC16 = 0x04
+        //response2.writeShort(0x0004);
+        response2.writeShort(0x0007);
+        //Данные
+        //3 - Кол-во пакетов 1 байт = 0x01
+        //response2.writeByte(0x01);
+        response2.writeByte(0x02);
+
+
+        //32 Конфигурационный пакет от сервера – запрос значения параметра
+        //4 - ID пакета 1 байт = 0x20
+        response2.writeByte(0x20);
+        //5 - Параметр 2 байта (имя сервера) = 0x00F5
+        response2.writeShort(0x00F5);
+
+        //Посылка №2
+        //4 - ID пакета 1 байт = 0x20
+        response2.writeByte(0x20);
+        //5 - Параметр 2 байта (порт сервера) = 0x00F5
+        response2.writeShort(0x00F6);
+
+
+        //6 - CRC16 2 байта (с №3 ПО №5 включительно) =             
+        response2.writeShort(Crc.crc16_A001(response2.toByteBuffer(4, 7)));
+        //0000 0004 01 20 00f5 71c0 +++
+        //0000 0015 01 21 00f5 10 62692e7175616e742e6e65742e756100 ad11
+
+        channel.write(response2);
+        Log.debug("Response="+ChannelBufferTools.readHexString(response2,13*2));
+    }
     
     private List<Position> parseLocation(Channel channel, ChannelBuffer buf) {
         List<Position> positions = new LinkedList<Position>();
@@ -256,6 +261,68 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
         return positions;
     }
     
+    private List<DeviceCommand> parseCommand(Channel channel, ChannelBuffer buf){
+        //0000 0015 01 21 00f5 10 62692e7175616e742e6e65742e756100 ad11
+        buf.skipBytes(2); //
+        buf.readUnsignedShort(); // data length
+        int count = buf.readUnsignedByte(); // count
+        
+        List<DeviceCommand> commands = new LinkedList<DeviceCommand>();        
+
+        for(int i = 0; i < count; i++){
+            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+            DeviceCommand command = new DeviceCommand();
+            
+            int codec = buf.readUnsignedByte(); // codec
+            extendedInfo.set("codec", codec);
+            
+            int commandStart = 1;
+            int commandLength = 0;
+            
+            //Ответ серверу на запрос значения параметра
+            if(codec == 33){//Ответ треккера на конфигурационный пакет – запрос значения параметра
+                int paramId = buf.readUnsignedShort();
+                int length = buf.readUnsignedByte();                    
+                String paramVal=getReadFromIdConfig(buf, paramId, length);
+
+                               
+                Log.debug("codec="+codec+" paramId="+paramId+" paramVal="+paramVal);
+                extendedInfo.set(""+paramId, paramVal);
+                
+                commandStart = length + 4;
+                commandLength = length + 4;
+            }
+            else if(codec == 37){//Ответ треккера на конфигурационный пакет – установка значения параметра
+                int paramId = buf.readUnsignedShort();
+                int isSet = buf.readUnsignedByte(); //0 – неверный параметр, 255 – параметр установлен
+
+                extendedInfo.set(""+paramId, isSet);
+                
+                commandStart = 4;
+                commandLength = 4;
+            }
+            //else if(codec == 40){//Пакет с командой от сервера
+            //    int cmd = buf.readUnsignedByte(); //Код команды
+            //}
+            else if(codec == 41){//Ответ на пакет с командой от сервера
+                short cmd = buf.readUnsignedByte();
+                short length = buf.readUnsignedByte();   
+            }
+            else if(codec == 42){//Ответ на неподдерживаемую команду от сервера
+                short cmd = buf.readUnsignedByte();
+            }
+            buf.skipBytes(-commandStart);
+            String hex = ChannelBufferTools.readHexString(buf, commandLength); 
+            command.setCommand(hex);
+            
+            command.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+            commands.add(command);
+        }
+        
+        
+        return commands;
+    }
+    
     @Override
     protected Object decode(ChannelHandlerContext ctx, Channel channel, Object msg)
             throws Exception {
@@ -263,25 +330,8 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
         ChannelBuffer buf = (ChannelBuffer) msg;
         
         if ((buf.getUnsignedShort(0)==0)&&(buf.getUnsignedShort(2)>0)){
-            //0000 0015 01 21 00f5 10 62692e7175616e742e6e65742e756100 ad11
             Log.debug("config");
-            buf.skipBytes(2); //
-            buf.readUnsignedShort(); // data length
-            int count = buf.readUnsignedByte(); // count
-            
-            for(int i = 0; i < count; i++){
-                int codec = buf.readUnsignedByte(); // codec
-                //Ответ серверу на запрос значения параметра
-                if(codec == 33){
-                    int paramId = buf.readUnsignedShort();
-                    int length = buf.readUnsignedByte();                    
-                    String paramVal=getReadFromIdConfig(buf, paramId, length);
-                    
-                    
-                    
-                    Log.debug("codec="+codec+" paramId="+paramId+" paramVal="+paramVal);
-                }
-            }
+            return parseCommand(channel, buf);
             
         } else if (buf.getUnsignedShort(0) > 0) {
             Log.debug("parseIdentification");
@@ -315,6 +365,7 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             case 269://Авторизированный телефонный номер
 
             paramVal = buf.toString(buf.readerIndex(), length-1, Charset.defaultCharset());
+            buf.readByte();
             break;
 
             case 11://Период съёма по времени при выключенном зажигании ( по умолчанию 30 сек)

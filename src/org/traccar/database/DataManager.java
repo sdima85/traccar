@@ -29,6 +29,7 @@ import javax.xml.xpath.XPathFactory;
 import org.traccar.helper.DriverDelegate;
 import org.traccar.helper.Log;
 import org.traccar.model.Device;
+import org.traccar.model.DeviceCommand;
 import org.traccar.model.Position;
 import org.xml.sax.InputSource;
 
@@ -63,6 +64,10 @@ public class DataManager {
     private NamedParameterStatement queryGetDevices;
     private NamedParameterStatement queryAddPosition;
     private NamedParameterStatement queryUpdateLatestPosition;
+    
+    private NamedParameterStatement queryGetCommands;
+    private NamedParameterStatement queryAddCommand;
+    private NamedParameterStatement queryUpdateCommand;
     
     private String infoStyle;
 
@@ -114,6 +119,20 @@ public class DataManager {
             queryUpdateLatestPosition = new NamedParameterStatement(query, dataSource);
         }
         
+        // Commands
+        query = properties.getProperty("database.selectCommand");
+        if (query != null) {
+            queryGetCommands = new NamedParameterStatement(query, dataSource);
+        }
+        query = properties.getProperty("database.insertCommand");
+        if (query != null) {
+            queryAddCommand = new NamedParameterStatement(query, dataSource);
+        }
+        query = properties.getProperty("database.updateCommand");
+        if (query != null) {
+            queryUpdateCommand = new NamedParameterStatement(query, dataSource);
+        }
+        
         //Initialization info style
         infoStyle = properties.getProperty("database.infoStyle");
         if (infoStyle == null) {
@@ -152,6 +171,34 @@ public class DataManager {
             return new LinkedList<Device>();
         }
     }
+    
+    
+    private final NamedParameterStatement.ResultSetProcessor<DeviceCommand> commandResultSetProcessor = new NamedParameterStatement.ResultSetProcessor<DeviceCommand>() {
+        @Override
+        public DeviceCommand processNextRow(ResultSet rs) throws SQLException {
+            DeviceCommand command = new DeviceCommand();
+            command.setId(rs.getLong("id"));
+            command.setDeviceId(rs.getLong("device_id"));
+            command.setImei(rs.getString("imei"));
+            command.setCommand(rs.getString("command"));         
+            command.setData(rs.getString("data"));    
+            return command;
+        }
+    };
+    public List<DeviceCommand> getCommands() throws SQLException {
+        if (queryGetCommands != null) {
+            return queryGetCommands.prepare().executeQuery(commandResultSetProcessor);
+        } else {
+            return new LinkedList<DeviceCommand>();
+        }
+    }
+    
+    public List<DeviceCommand> getCommandsByImei(String imei){
+        if(commands == null){ return null; }
+        if(commands.get(imei) == null){ return null; }
+        if(commands.get(imei).isEmpty()){ return null; }
+        return commands.get(imei);
+    }
 
     public String getStyleInfo(){
         return infoStyle;
@@ -161,6 +208,10 @@ public class DataManager {
      * Devices cache
      */
     private Map<String, Device> devices;
+    /**
+     * Devices commands cache
+     */
+    private Map<String, List<DeviceCommand>> commands;
     private Calendar devicesLastUpdate;
     private long devicesRefreshDelay;
     private static final long DEFAULT_REFRESH_DELAY = 300;
@@ -173,6 +224,21 @@ public class DataManager {
             for (Device device : getDevices()) {
                 devices.put(device.getImei(), device);
             }
+            
+            commands = new HashMap<String, List<DeviceCommand>>();
+            for (DeviceCommand command : getCommands()) {
+                List<DeviceCommand> deviceCommands;
+                if(!commands.containsKey(command.getImei())){
+                    deviceCommands = commands.put(command.getImei(),new LinkedList<DeviceCommand>());
+                }
+                else{
+                    deviceCommands = commands.get(command.getImei());
+                }
+                
+                deviceCommands.add(command);
+                //TODO Проверить
+                //commands.replace(command.getImei(), deviceCommands);
+            }            
             devicesLastUpdate = Calendar.getInstance();
         }
 
@@ -197,6 +263,19 @@ public class DataManager {
         return null;
     }
 
+    public synchronized Long addCommand(DeviceCommand command) throws SQLException {
+        if (queryAddCommand != null && (command.getId()==0)) {            
+            
+            List<Long> result = assignCommandVariables(queryAddCommand.prepare(), command).executeUpdate(generatedKeysResultSetProcessor);
+            if (result != null && !result.isEmpty()) {
+                return result.iterator().next();
+            }
+        }else if(queryUpdateCommand != null){
+            assignCommandVariables(queryUpdateCommand.prepare(), command).executeUpdate();
+        }
+        return null;
+    }
+    
     public void updateLatestPosition(Position position, Long positionId) throws SQLException {
         if (queryUpdateLatestPosition != null) {
             assignVariables(queryUpdateLatestPosition.prepare(), position).setLong("id", positionId).executeUpdate();
@@ -282,4 +361,14 @@ public class DataManager {
         return params;
     }
 
+    private NamedParameterStatement.Params assignCommandVariables(NamedParameterStatement.Params params, DeviceCommand command) throws SQLException {
+       
+        params.setLong("id", command.getId());
+        params.setLong("device_id", command.getDeviceId());
+        params.setTimestamp("time", command.getCommandTime());
+        params.setString("command", command.getCommand());
+        params.setString("imei", command.getImei());
+        params.setString("data", command.getCommand());      
+        return params;
+    }
 }
