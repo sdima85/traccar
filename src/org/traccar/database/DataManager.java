@@ -126,7 +126,8 @@ public class DataManager {
         }
         query = properties.getProperty("database.insertCommand");
         if (query != null) {
-            queryAddCommand = new NamedParameterStatement(query, dataSource);
+            //queryAddCommand = new NamedParameterStatement(query, dataSource);
+            queryAddCommand = new NamedParameterStatement(query, dataSource, Statement.RETURN_GENERATED_KEYS);
         }
         query = properties.getProperty("database.updateCommand");
         if (query != null) {
@@ -181,7 +182,11 @@ public class DataManager {
             command.setDeviceId(rs.getLong("device_id"));
             command.setImei(rs.getString("imei"));
             command.setCommand(rs.getString("command"));         
-            command.setData(rs.getString("data"));    
+            try{
+                command.setData(rs.getString("data")); 
+            } catch (SQLException e) {
+                
+            }
             return command;
         }
     };
@@ -229,11 +234,12 @@ public class DataManager {
             for (DeviceCommand command : getCommands()) {
                 List<DeviceCommand> deviceCommands;
                 if(!commands.containsKey(command.getImei())){
-                    deviceCommands = commands.put(command.getImei(),new LinkedList<DeviceCommand>());
+                    //deviceCommands = 
+                    commands.put(command.getImei(),new LinkedList<DeviceCommand>());
                 }
-                else{
+                //else{
                     deviceCommands = commands.get(command.getImei());
-                }
+                //}
                 
                 deviceCommands.add(command);
                 //TODO Проверить
@@ -264,13 +270,12 @@ public class DataManager {
     }
 
     public synchronized Long addCommand(DeviceCommand command) throws SQLException {
-        if (queryAddCommand != null && (command.getId()==0)) {            
-            
+        if (queryAddCommand != null && (command.getId()==0)) {
             List<Long> result = assignCommandVariables(queryAddCommand.prepare(), command).executeUpdate(generatedKeysResultSetProcessor);
             if (result != null && !result.isEmpty()) {
                 return result.iterator().next();
             }
-        }else if(queryUpdateCommand != null){
+        }else if(queryUpdateCommand != null && (command.getId()>0)){
             assignCommandVariables(queryUpdateCommand.prepare(), command).executeUpdate();
         }
         return null;
@@ -368,7 +373,7 @@ public class DataManager {
         params.setTimestamp("time", command.getCommandTime());
         params.setString("command", command.getCommand());
         params.setString("imei", command.getImei());
-        params.setString("data", command.getCommand());      
+        params.setString("data", command.getData());      
         return params;
     }
 }

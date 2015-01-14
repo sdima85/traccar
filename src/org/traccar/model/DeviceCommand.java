@@ -70,7 +70,7 @@ public class DeviceCommand {
     private Date commandTime;
 
     public Date getCommandTime() {
-        return commandTime;
+        return (commandTime!=null ? commandTime : new Date());
     }
 
     public void setCommandTime(Date commandTime) {

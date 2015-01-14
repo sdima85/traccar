@@ -16,6 +16,7 @@
 package org.traccar.protocol;
 
 import java.nio.charset.Charset;
+import java.sql.SQLException;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
@@ -80,9 +81,86 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
     private static final int CODEC_FM4X00 = 0x08;
     private static final int CODEC_12 = 0x0C;
     
-    private void sendCommand(Channel channel){
+    private void sendCommand(Channel channel){       
+        List<DeviceCommand> commands = getDataManager().getCommandsByImei(deviceImei);
+        
+        if(commands==null){return;}
+        
         //
-        int count=7; //+
+        int count=7; //        
+        //Не больше 4х в пакете
+        int respCmd = (commands.size() > 3 ? 4 : commands.size());
+        //int lenCmd = 0;
+        String cmd = "";
+        
+        for (int i = 0; i < respCmd; i++) {
+            DeviceCommand command = commands.get(i);
+            cmd += command.getCommand();
+        }
+        
+        int cmdLen = (cmd.length()/2);
+        ChannelBuffer response2 = ChannelBuffers.directBuffer(count + cmdLen);
+        //1 - 2 байта = 0x0000
+        response2.writeShort(0x0000);
+        //2 - Длина данных 2 байта без CRC16 = 0x04
+        response2.writeShort(cmdLen + 1);
+        //Данные
+        //3 - Кол-во пакетов 1 байт = 0x01
+        response2.writeByte(respCmd);
+        //4
+        response2.writeBytes(ChannelBufferTools.convertHexString(cmd));
+        //6 - CRC16 2 байта (с №3 ПО №5 включительно) =             
+        response2.writeShort(Crc.crc16_A001(response2.toByteBuffer(4, cmdLen+1)));
+        channel.write(response2);
+        Log.debug("Response="+ChannelBufferTools.readHexString(response2,(count + cmdLen)*2));
+        
+        for (int i = 0; i < respCmd; i++) {
+            //update to send
+            try{
+                getDataManager().addCommand(commands.get(0));
+            }catch(SQLException e){
+                Log.warning(e);
+            }
+            //delete
+            commands.remove(0);
+        }
+        
+        
+        /*
+        int index=0;
+        for (int i=0; i<respCmd;i++) {
+            DeviceCommand command=commands.get(i);
+            
+        //for (DeviceCommand command : commands) {
+            index++; 
+            
+            int cmdLen = (command.getCommand().length()/2);
+            
+            ChannelBuffer response2 = ChannelBuffers.directBuffer(count + cmdLen);
+            //1 - 2 байта = 0x0000
+            response2.writeShort(0x0000);
+            //2 - Длина данных 2 байта без CRC16 = 0x04
+            response2.writeShort(cmdLen+1);
+            //Данные
+            //3 - Кол-во пакетов 1 байт = 0x01
+            response2.writeByte(0x01);
+            //4
+            response2.writeBytes(ChannelBufferTools.convertHexString(command.getCommand()));
+            //6 - CRC16 2 байта (с №3 ПО №5 включительно) =             
+            response2.writeShort(Crc.crc16_A001(response2.toByteBuffer(4, 4)));
+            channel.write(response2);
+            Log.debug("Response="+ChannelBufferTools.readHexString(response2,(count + cmdLen)*2));
+            
+            //ChannelBufferTools.convertHexString();
+            //ChannelBuffers.wrappedBuffer()
+            //commands.remove(command);
+            
+            if(index>=4){
+                break;
+            }
+        }
+        */
+        /*
         ChannelBuffer response2 = ChannelBuffers.directBuffer(count + (2 * 3));
 
         //1 - 2 байта = 0x0000
@@ -116,6 +194,7 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
 
         channel.write(response2);
         Log.debug("Response="+ChannelBufferTools.readHexString(response2,13*2));
+        */
     }
     
     private List<Position> parseLocation(Channel channel, ChannelBuffer buf) {
@@ -256,6 +335,7 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             ChannelBuffer response = ChannelBuffers.directBuffer(4);
             response.writeInt(count);
             channel.write(response);
+            sendCommand(channel);
         }
         
         return positions;
@@ -272,7 +352,10 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
         for(int i = 0; i < count; i++){
             ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
             DeviceCommand command = new DeviceCommand();
+            command.setDeviceId(deviceId);
+            command.setImei(deviceImei);
             
+            //int idx = buf.readerIndex();
             int codec = buf.readUnsignedByte(); // codec
             extendedInfo.set("codec", codec);
             
@@ -284,11 +367,10 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
                 int paramId = buf.readUnsignedShort();
                 int length = buf.readUnsignedByte();                    
                 String paramVal=getReadFromIdConfig(buf, paramId, length);
-
                                
                 Log.debug("codec="+codec+" paramId="+paramId+" paramVal="+paramVal);
-                extendedInfo.set(""+paramId, paramVal);
-                
+                extendedInfo.set("param", paramId);
+                extendedInfo.set("value", paramVal);
                 commandStart = length + 4;
                 commandLength = length + 4;
             }
@@ -296,8 +378,8 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
                 int paramId = buf.readUnsignedShort();
                 int isSet = buf.readUnsignedByte(); //0 – неверный параметр, 255 – параметр установлен
 
-                extendedInfo.set(""+paramId, isSet);
-                
+                extendedInfo.set("param", paramId);
+                extendedInfo.set("isset", isSet);                
                 commandStart = 4;
                 commandLength = 4;
             }
@@ -311,8 +393,10 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             else if(codec == 42){//Ответ на неподдерживаемую команду от сервера
                 short cmd = buf.readUnsignedByte();
             }
-            buf.skipBytes(-commandStart);
-            String hex = ChannelBufferTools.readHexString(buf, commandLength); 
+            int idx = buf.readerIndex();
+            buf.readerIndex(idx-commandStart);
+            //buf.skipBytes(-commandStart);
+            String hex = ChannelBufferTools.readHexString(buf, commandLength*2); 
             command.setCommand(hex);
             
             command.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
@@ -365,7 +449,7 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             case 269://Авторизированный телефонный номер
 
             paramVal = buf.toString(buf.readerIndex(), length-1, Charset.defaultCharset());
-            buf.readByte();
+            buf.skipBytes(length);
             break;
 
             case 11://Период съёма по времени при выключенном зажигании ( по умолчанию 30 сек)
