@@ -234,16 +234,10 @@ public class DataManager {
             for (DeviceCommand command : getCommands()) {
                 List<DeviceCommand> deviceCommands;
                 if(!commands.containsKey(command.getImei())){
-                    //deviceCommands = 
                     commands.put(command.getImei(),new LinkedList<DeviceCommand>());
                 }
-                //else{
-                    deviceCommands = commands.get(command.getImei());
-                //}
-                
+                deviceCommands = commands.get(command.getImei());
                 deviceCommands.add(command);
-                //TODO Проверить
-                //commands.replace(command.getImei(), deviceCommands);
             }            
             devicesLastUpdate = Calendar.getInstance();
         }

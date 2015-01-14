@@ -123,78 +123,7 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             }
             //delete
             commands.remove(0);
-        }
-        
-        
-        /*
-        int index=0;
-        for (int i=0; i<respCmd;i++) {
-            DeviceCommand command=commands.get(i);
-            
-        //for (DeviceCommand command : commands) {
-            index++; 
-            
-            int cmdLen = (command.getCommand().length()/2);
-            
-            ChannelBuffer response2 = ChannelBuffers.directBuffer(count + cmdLen);
-            //1 - 2 байта = 0x0000
-            response2.writeShort(0x0000);
-            //2 - Длина данных 2 байта без CRC16 = 0x04
-            response2.writeShort(cmdLen+1);
-            //Данные
-            //3 - Кол-во пакетов 1 байт = 0x01
-            response2.writeByte(0x01);
-            //4
-            response2.writeBytes(ChannelBufferTools.convertHexString(command.getCommand()));
-            //6 - CRC16 2 байта (с №3 ПО №5 включительно) =             
-            response2.writeShort(Crc.crc16_A001(response2.toByteBuffer(4, 4)));
-            channel.write(response2);
-            Log.debug("Response="+ChannelBufferTools.readHexString(response2,(count + cmdLen)*2));
-            
-            //ChannelBufferTools.convertHexString();
-            //ChannelBuffers.wrappedBuffer()
-            //commands.remove(command);
-            
-            if(index>=4){
-                break;
-            }
-        }
-        */
-        /*
-        ChannelBuffer response2 = ChannelBuffers.directBuffer(count + (2 * 3));
-
-        //1 - 2 байта = 0x0000
-        response2.writeShort(0x0000);
-        //2 - Длина данных 2 байта без CRC16 = 0x04
-        //response2.writeShort(0x0004);
-        response2.writeShort(0x0007);
-        //Данные
-        //3 - Кол-во пакетов 1 байт = 0x01
-        //response2.writeByte(0x01);
-        response2.writeByte(0x02);
-
-
-        //32 Конфигурационный пакет от сервера – запрос значения параметра
-        //4 - ID пакета 1 байт = 0x20
-        response2.writeByte(0x20);
-        //5 - Параметр 2 байта (имя сервера) = 0x00F5
-        response2.writeShort(0x00F5);
-
-        //Посылка №2
-        //4 - ID пакета 1 байт = 0x20
-        response2.writeByte(0x20);
-        //5 - Параметр 2 байта (порт сервера) = 0x00F5
-        response2.writeShort(0x00F6);
-
-
-        //6 - CRC16 2 байта (с №3 ПО №5 включительно) =             
-        response2.writeShort(Crc.crc16_A001(response2.toByteBuffer(4, 7)));
-        //0000 0004 01 20 00f5 71c0 +++
-        //0000 0015 01 21 00f5 10 62692e7175616e742e6e65742e756100 ad11
-
-        channel.write(response2);
-        Log.debug("Response="+ChannelBufferTools.readHexString(response2,13*2));
-        */
+        }        
     }
     
     private List<Position> parseLocation(Channel channel, ChannelBuffer buf) {
@@ -355,7 +284,6 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             command.setDeviceId(deviceId);
             command.setImei(deviceImei);
             
-            //int idx = buf.readerIndex();
             int codec = buf.readUnsignedByte(); // codec
             extendedInfo.set("codec", codec);
             
@@ -395,15 +323,11 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             }
             int idx = buf.readerIndex();
             buf.readerIndex(idx-commandStart);
-            //buf.skipBytes(-commandStart);
             String hex = ChannelBufferTools.readHexString(buf, commandLength*2); 
-            command.setCommand(hex);
-            
+            command.setCommand(hex);            
             command.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
             commands.add(command);
         }
-        
-        
         return commands;
     }
     
