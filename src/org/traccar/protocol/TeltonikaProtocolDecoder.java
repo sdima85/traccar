@@ -16,7 +16,6 @@
 package org.traccar.protocol;
 
 import java.nio.charset.Charset;
-import java.sql.SQLException;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
@@ -29,19 +28,17 @@ import org.jboss.netty.channel.ChannelHandlerContext;
 
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.database.DataManager;
-import org.traccar.helper.ChannelBufferTools;
-import org.traccar.helper.Crc;
 import org.traccar.helper.Log;
 import org.traccar.model.Device;
-import org.traccar.model.DeviceCommand;
 import org.traccar.model.ExtendedInfoFormatter;
 import org.traccar.model.Position;
 
 public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
     
-    private long deviceId;
+    private long deviceId;    
     private String deviceImei;
     private String tableName;
+
 
     public TeltonikaProtocolDecoder(DataManager dataManager, String protocol, Properties properties) {
         super(dataManager, protocol, properties);
@@ -57,7 +54,6 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             deviceImei = imei;
             deviceId = device.getId();
             tableName = device.getTableName();
-            
             result = true;
         } catch(Exception error) {
             Log.warning("Unknown device - " + imei);
@@ -67,8 +63,6 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             ChannelBuffer response = ChannelBuffers.directBuffer(1);
             response.writeByte(result ? 1 : 0);
             channel.write(response);
-            
-            sendCommand(channel);
         }
     }
 
@@ -80,51 +74,6 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
     private static final int CODEC_GH3000 = 0x07;
     private static final int CODEC_FM4X00 = 0x08;
     private static final int CODEC_12 = 0x0C;
-    
-    private void sendCommand(Channel channel){       
-        List<DeviceCommand> commands = getDataManager().getCommandsByImei(deviceImei);
-        
-        if(commands==null){return;}
-        
-        //
-        int count=7; //        
-        //Не больше 4х в пакете
-        int respCmd = (commands.size() > 3 ? 4 : commands.size());
-        //int lenCmd = 0;
-        String cmd = "";
-        
-        for (int i = 0; i < respCmd; i++) {
-            DeviceCommand command = commands.get(i);
-            cmd += command.getCommand();
-        }
-        
-        int cmdLen = (cmd.length()/2);
-        ChannelBuffer response2 = ChannelBuffers.directBuffer(count + cmdLen);
-        //1 - 2 байта = 0x0000
-        response2.writeShort(0x0000);
-        //2 - Длина данных 2 байта без CRC16 = 0x04
-        response2.writeShort(cmdLen + 1);
-        //Данные
-        //3 - Кол-во пакетов 1 байт = 0x01
-        response2.writeByte(respCmd);
-        //4
-        response2.writeBytes(ChannelBufferTools.convertHexString(cmd));
-        //6 - CRC16 2 байта (с №3 ПО №5 включительно) =             
-        response2.writeShort(Crc.crc16_A001(response2.toByteBuffer(4, cmdLen+1)));
-        channel.write(response2);
-        Log.debug("Response="+ChannelBufferTools.readHexString(response2,(count + cmdLen)*2));
-        
-        for (int i = 0; i < respCmd; i++) {
-            //update to send
-            try{
-                getDataManager().addCommand(commands.get(0));
-            }catch(SQLException e){
-                Log.warning(e);
-            }
-            //delete
-            commands.remove(0);
-        }        
-    }
     
     private List<Position> parseLocation(Channel channel, ChannelBuffer buf) {
         List<Position> positions = new LinkedList<Position>();
@@ -227,7 +176,12 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             if (checkBit(globalMask, 1)) {
                 int cnt = buf.readUnsignedByte();
                 for (int j = 0; j < cnt; j++) {
-                    extendedInfo.set("io" + buf.readUnsignedByte(), buf.readUnsignedByte());
+                    int id = buf.readUnsignedByte();
+                    if (id == 1) {
+                        extendedInfo.set("power", buf.readUnsignedByte());
+                    } else {
+                        extendedInfo.set("io" + id, buf.readUnsignedByte());
+                    }
                 }
             }
 
@@ -264,71 +218,9 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
             ChannelBuffer response = ChannelBuffers.directBuffer(4);
             response.writeInt(count);
             channel.write(response);
-            sendCommand(channel);
         }
         
         return positions;
-    }
-    
-    private List<DeviceCommand> parseCommand(Channel channel, ChannelBuffer buf){
-        //0000 0015 01 21 00f5 10 62692e7175616e742e6e65742e756100 ad11
-        buf.skipBytes(2); //
-        buf.readUnsignedShort(); // data length
-        int count = buf.readUnsignedByte(); // count
-        
-        List<DeviceCommand> commands = new LinkedList<DeviceCommand>();        
-
-        for(int i = 0; i < count; i++){
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
-            DeviceCommand command = new DeviceCommand();
-            command.setDeviceId(deviceId);
-            command.setImei(deviceImei);
-            
-            int codec = buf.readUnsignedByte(); // codec
-            extendedInfo.set("codec", codec);
-            
-            int commandStart = 1;
-            int commandLength = 0;
-            
-            //Ответ серверу на запрос значения параметра
-            if(codec == 33){//Ответ треккера на конфигурационный пакет – запрос значения параметра
-                int paramId = buf.readUnsignedShort();
-                int length = buf.readUnsignedByte();                    
-                String paramVal=getReadFromIdConfig(buf, paramId, length);
-                               
-                Log.debug("codec="+codec+" paramId="+paramId+" paramVal="+paramVal);
-                extendedInfo.set("param", paramId);
-                extendedInfo.set("value", paramVal);
-                commandStart = length + 4;
-                commandLength = length + 4;
-            }
-            else if(codec == 37){//Ответ треккера на конфигурационный пакет – установка значения параметра
-                int paramId = buf.readUnsignedShort();
-                int isSet = buf.readUnsignedByte(); //0 – неверный параметр, 255 – параметр установлен
-
-                extendedInfo.set("param", paramId);
-                extendedInfo.set("isset", isSet);                
-                commandStart = 4;
-                commandLength = 4;
-            }
-            //else if(codec == 40){//Пакет с командой от сервера
-            //    int cmd = buf.readUnsignedByte(); //Код команды
-            //}
-            else if(codec == 41){//Ответ на пакет с командой от сервера
-                short cmd = buf.readUnsignedByte();
-                short length = buf.readUnsignedByte();   
-            }
-            else if(codec == 42){//Ответ на неподдерживаемую команду от сервера
-                short cmd = buf.readUnsignedByte();
-            }
-            int idx = buf.readerIndex();
-            buf.readerIndex(idx-commandStart);
-            String hex = ChannelBufferTools.readHexString(buf, commandLength*2); 
-            command.setCommand(hex);            
-            command.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
-            commands.add(command);
-        }
-        return commands;
     }
     
     @Override
@@ -337,69 +229,13 @@ public class TeltonikaProtocolDecoder extends BaseProtocolDecoder {
         
         ChannelBuffer buf = (ChannelBuffer) msg;
         
-        if ((buf.getUnsignedShort(0)==0)&&(buf.getUnsignedShort(2)>0)){
-            Log.debug("config");
-            return parseCommand(channel, buf);
-            
-        } else if (buf.getUnsignedShort(0) > 0) {
-            Log.debug("parseIdentification");
+        if (buf.getUnsignedShort(0) > 0) {
             parseIdentification(channel, buf);
-        }
-        else {
-            Log.debug("parseLocation");
+        } else {
             return parseLocation(channel, buf);
         }
         
         return null;
     }
 
-    private String getReadFromIdConfig(ChannelBuffer buf, int paramId, int length){
-        String paramVal="";
-        switch (paramId) {
-            case 242://Точка доступа GPRS ( по умолчанию 3g.utel.ua )
-            case 243://Логин доступа GPRS ( по умолчанию не установлен. )
-            case 244://Пароль доступа GPRS ( по умолчанию не установлен. )
-            case 245://server
-            case 252://Логин доступа по СМС
-            case 253://Пароль доступа по СМС
-            case 261://Авторизированный телефонный номер
-            case 262://
-            case 263://
-            case 264://
-            case 265://
-            case 266://
-            case 267://
-            case 268://
-            case 269://Авторизированный телефонный номер
-
-            paramVal = buf.toString(buf.readerIndex(), length-1, Charset.defaultCharset());
-            buf.skipBytes(length);
-            break;
-
-            case 11://Период съёма по времени при выключенном зажигании ( по умолчанию 30 сек)
-            case 12://Период съёма по расстоянию ( по умолчанию 500 м)
-            case 13://Период съёма по азимуту ( по умолчанию 10° )
-            case 232://Кол-во записей в пакете ( по умолчанию 0 )
-            case 246://port
-            case 284://Таймаут начала движения по акселерометру ( по умолчанию 20*0,1=2сек.)
-            case 285://Таймаут остановка движения по акселерометру ( по умолчанию 50 *0,1=5сек.)
-            case 270://Период передачи данных на сервер ( по умолчанию 60 сек)
-            case 903://Период съёма по времени при включенном зажигании ( по умолчанию 30 сек)
-            case 905://Период ожидания между попытками в серии ( по умолчанию 60 сек)
-            paramVal = ""+buf.readUnsignedShort();
-            break;
-
-            case 281://Угол отклонения акселерометра по оси X ( по умолчанию 3°)
-            case 282://Y
-            case 283://Z
-            case 900://Разрешение съёма по времени ( по умолчанию 1)
-            case 901://Разрешение съёма по расстоянию    
-            case 902://Разрешение съёма по азимуту ( по умолчанию 1)
-            case 904://Кол-во попыток в серии соединения с сервером ( по умолчанию 3)
-
-            paramVal = ""+buf.readUnsignedByte();
-            break;
-        }
-        return paramVal;
-    }
 }

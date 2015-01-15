@@ -104,6 +104,8 @@ public class ServerManager {
 
         initGeocoder(properties);
 
+        initBitrakServer("bitrak");
+        
         initXexunServer("xexun");
         initGps103Server("gps103");
         initTk103Server("tk103");
@@ -231,6 +233,19 @@ public class ServerManager {
         }
         return false;
     }
+    
+    private void initBitrakServer(final String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    pipeline.addLast("frameDecoder", new BitrakFrameDecoder());
+                    pipeline.addLast("objectDecoder", new BitrakProtocolDecoder(dataManager, protocol, properties));
+                }
+            });
+        }
+    }
+    
 
     private void initXexunServer(final String protocol) throws SQLException {
         if (isProtocolEnabled(properties, protocol)) {

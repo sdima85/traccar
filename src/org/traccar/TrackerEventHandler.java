@@ -97,11 +97,11 @@ public class TrackerEventHandler extends IdleStateAwareChannelHandler {
         } else if (e.getMessage() instanceof List) {
             
             List<Object> datas = (List<Object>) e.getMessage();
-            for (Object data : (List<Object>)datas){
+            for (Object data : (List<Object>) datas){
                 if (data instanceof Position){
-                    id = processSinglePosition((Position)data);
+                    id = processSinglePosition((Position) data);
                     lastPostition = (Position)data;
-                }else if(data instanceof DeviceCommand){
+                } else if (data instanceof DeviceCommand){
                     processSingleCommand((DeviceCommand) data);
                 }
             }
