@@ -359,6 +359,26 @@ public class DataManager {
         
         return params;
     }
+    
+    public String getQuantParametr(String info, String paramName){
+        String paramValue=null;
+        try{
+            int start = info.indexOf(paramName+"=");
+            if(start>=0){
+                int count = paramName.length()+1;
+                String index = info.substring(start+count, info.indexOf(";",start+count));
+                paramValue = index;
+            }
+            else{
+                paramValue = null;
+            }
+        }
+        catch(Exception e){
+            Log.warning("Error in parse getQuantParametr: " + info, e);
+            paramValue = null;
+        }
+        return paramValue;
+    }
 
     private NamedParameterStatement.Params assignCommandVariables(NamedParameterStatement.Params params, DeviceCommand command) throws SQLException {
        

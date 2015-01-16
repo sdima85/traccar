@@ -144,4 +144,16 @@ public class ChannelBufferTools {
         return out;
     }
 
+    /*
+    * Обьединение масивов
+    */
+    public static byte[] mergeArray(byte[] start, byte[] end){
+        int startLen = start.length;
+        int endLen = end.length;
+
+        byte[] result = new byte[startLen+endLen];
+        System.arraycopy(start, 0, result, 0, startLen);
+        System.arraycopy(end, 0, result, startLen, endLen);
+        return result;
+    }
 }
