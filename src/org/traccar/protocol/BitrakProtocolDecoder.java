@@ -86,7 +86,7 @@ public class BitrakProtocolDecoder extends BaseProtocolDecoder {
         for (int i = 0; i < respCmd; i++) {
             DeviceCommand command = commands.get(i);
             
-            if(command.getCommand() != null){ //command hex
+            if((command.getCommand() != null) && (!"".equals(command.getCommand()))){ //command hex
                 String cmd = command.getCommand();
                 if(sendData == null){                    
                     sendData = ChannelBufferTools.convertHexString(cmd);
@@ -103,8 +103,11 @@ public class BitrakProtocolDecoder extends BaseProtocolDecoder {
                     String paramId = this.getDataManager().getQuantParametr(data,"param");
                     String paramValue = this.getDataManager().getQuantParametr(data,"value");
                     
-                    if((cmdName != null) && (paramValue != null)){
+                    if(cmdName != null){
                         byte[] sData = getBuildConfig(cmdName, (paramId == null ? 0 : Integer.parseInt(paramId)), paramValue);
+                        
+                        //command.setCommand();
+                        
                         if(sendData == null){
                             sendData = sData;
                         } else {
