@@ -156,4 +156,17 @@ public class ChannelBufferTools {
         System.arraycopy(end, 0, result, startLen, endLen);
         return result;
     }
+    /*
+    * Масив в строку HEX
+    */
+    public static String readHexString(byte[] data) {
+        StringBuilder result = new StringBuilder();
+        Formatter formatter = new Formatter(result);
+        int length = data.length;
+        
+        for (int i = 0; i < length; i++) {
+            formatter.format("%02x", data[i]);
+        }
+        return result.toString();
+    }
 }

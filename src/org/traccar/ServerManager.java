@@ -102,6 +102,7 @@ public class ServerManager {
         initGeocoder(properties);
 
         initBitrakServer("bitrak");
+        initTeletrackServer("teletrack");
         
         initXexunServer("xexun");
         initGps103Server("gps103");
@@ -242,6 +243,18 @@ public class ServerManager {
                 protected void addSpecificHandlers(ChannelPipeline pipeline) {
                     pipeline.addLast("frameDecoder", new BitrakFrameDecoder());
                     pipeline.addLast("objectDecoder", new BitrakProtocolDecoder(dataManager, protocol, properties));
+                }
+            });
+        }
+    }
+    
+    private void initTeletrackServer(final String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    pipeline.addLast("frameDecoder", new TeletrackFrameDecoder());
+                    pipeline.addLast("objectDecoder", new TeletrackProtocolDecoder(dataManager, protocol, properties));
                 }
             });
         }

@@ -24,13 +24,13 @@ import org.traccar.model.DeviceCommand;
 import org.traccar.model.ExtendedInfoFormatter;
 import org.traccar.model.Position;
 
-public class BitrakProtocolDecoder extends BaseProtocolDecoder {
+public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
     
     private long deviceId;
     private String deviceImei;
     private String tableName;
 
-    public BitrakProtocolDecoder(DataManager dataManager, String protocol, Properties properties) {
+    public TeletrackProtocolDecoder(DataManager dataManager, String protocol, Properties properties) {
         super(dataManager, protocol, properties);
     }
 
