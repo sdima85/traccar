@@ -55,7 +55,7 @@ public abstract class TrackerServer {
 
         address = serverManager.getProperties().getProperty(protocol + ".address");
         String portProperty = serverManager.getProperties().getProperty(protocol + ".port");
-        port = (portProperty != null) ? Integer.valueOf(portProperty) : 5000;
+        port = Integer.valueOf(portProperty);
 
         bootstrap.setPipelineFactory(new BasePipelineFactory(serverManager, this, protocol) {
             @Override
@@ -112,6 +112,10 @@ public abstract class TrackerServer {
 
     public void setPipelineFactory(ChannelPipelineFactory pipelineFactory) {
         bootstrap.setPipelineFactory(pipelineFactory);
+    }
+
+    public ChannelPipelineFactory getPipelineFactory() {
+        return bootstrap.getPipelineFactory();
     }
 
     /**

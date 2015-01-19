@@ -36,7 +36,6 @@ public class TrackerEventHandler extends IdleStateAwareChannelHandler {
     private DataManager dataManager;
 
     TrackerEventHandler(DataManager newDataManager) {
-        super();
         dataManager = newDataManager;
     }
 
