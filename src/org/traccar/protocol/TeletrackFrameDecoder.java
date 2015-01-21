@@ -10,14 +10,22 @@ import org.jboss.netty.handler.codec.frame.FrameDecoder;
 
 public class TeletrackFrameDecoder extends FrameDecoder {
 
-    private static final int MESSAGE_MINIMUM_LENGTH = 12;
+    //private static final int MESSAGE_MINIMUM_LENGTH = 12;
+    
+    //public TeletrackFrameDecoder(DataManager dataManager, String protocol, Properties properties) {
+    //    super(dataManager, protocol, properties);
+        
+    //    this.setMaxCumulationBufferCapacity(Integer.MAX_VALUE);
+        //
+    //}
+    
     
     @Override
     protected Object decode(
             ChannelHandlerContext ctx,
             Channel channel,
             ChannelBuffer buf) throws Exception {
-        
+        /*
         // Check minimum length
         if (buf.readableBytes() < MESSAGE_MINIMUM_LENGTH) {
             return null;
@@ -44,6 +52,9 @@ public class TeletrackFrameDecoder extends FrameDecoder {
         }
         
         return null;
+        */
+        int count = buf.readableBytes();
+        return buf.readBytes(count);
     }
 
 }

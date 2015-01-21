@@ -8,6 +8,7 @@ import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
+import java.util.TimeZone;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
@@ -29,45 +30,72 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
     private long deviceId;
     private String deviceImei;
     private String tableName;
+    
+    private String packetId;
+    private int packetLen;
+    private int packetIndex;    
+    private ChannelBuffer packetBuf;
+    
 
     public TeletrackProtocolDecoder(DataManager dataManager, String protocol, Properties properties) {
         super(dataManager, protocol, properties);
+        packetClear();
     }
+    
+    private int BIN_LENGTH = 0x20; //32
+    private int ATR_LENGTH = 4;
 
     private void parseIdentification(Channel channel, ChannelBuffer buf) {
         boolean result = false;
-
-        int length = buf.readUnsignedShort();
-        String imei = buf.toString(buf.readerIndex(), length, Charset.defaultCharset());
+        
+        String devID = buf.toString(4, 4, Charset.defaultCharset());
+        int pwdLen = 0;
+        
+        //Проверка пароля ???
+        /*
+        for (int i=9; i < buf.writerIndex(); i++){
+            if(buf.getByte(i) == 0){
+                pwdLen = i - 9;
+                break;
+            }
+        }        
+        String DevPwd = buf.toString(9, pwdLen ,Charset.defaultCharset());
+        */
         try {
-            Device device = getDataManager().getDeviceByImei(imei);
-            deviceImei = imei;
+            Device device = getDataManager().getDeviceByImei(devID);
+            deviceImei = devID;
             deviceId = device.getId();
             tableName = device.getTableName();
             
             result = true;
         } catch(Exception error) {
-            Log.warning("Unknown device - " + imei);
+            Log.warning("Unknown device - " + devID);
         }
         
         if (channel != null) {
             ChannelBuffer response = ChannelBuffers.directBuffer(1);
-            response.writeByte(result ? 1 : 0);
+            //response.writeByte(result ? 1 : 0);
+            response.writeByte(0x30); //'0'
             channel.write(response);
             
             sendCommand(channel);
         }
     }
 
-    private static boolean checkBit(long mask, int bit) {
-        long checkMask = 1 << bit;
-        return (mask & checkMask) == checkMask;
+    private long readUInt(ChannelBuffer buf){
+        int b0 = buf.readUnsignedByte();
+        int b1 = buf.readUnsignedByte();
+        int b2 = buf.readUnsignedByte();
+        int b3 = buf.readUnsignedByte();
+        
+        long res = b0 & 0xFF;
+        res |= ((b1 << 8) & 0xFF00);
+        res |= ((b2 << 16) & 0xFF0000);
+        res |= ((b3 << 24) & 0xFF000000);
+    
+        return res;
     }
 
-    private static final int CODEC_GH3000 = 0x07;
-    private static final int CODEC_FM4X00 = 0x08;
-    private static final int CODEC_12 = 0x0C;
-    
     /*
     * Отправка команд на устройства
     */
@@ -149,16 +177,8 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
     private List<Position> parseLocation(Channel channel, ChannelBuffer buf) {
         List<Position> positions = new LinkedList<Position>();
         
-        buf.skipBytes(4); // marker
-        buf.readUnsignedInt(); // data length
-        int codec = buf.readUnsignedByte(); // codec
-        
-        if (codec == CODEC_12) {
-            // TODO: decode serial port data
-            return null;
-        }
-        
-        int count = buf.readUnsignedByte();
+        buf.skipBytes(ATR_LENGTH); // marker
+        short count = buf.readUnsignedByte();
         
         for (int i = 0; i < count; i++) {
             Position position = new Position();
@@ -168,125 +188,64 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
             position.setTableName(tableName);
             position.setImei(deviceImei);
             
-            int globalMask = 0x0f;
+            long logId = readUInt(buf); //buf.readUnsignedInt(); //4b
+            extendedInfo.set("logId", logId);
             
-            if (codec == CODEC_GH3000) {
-
-                long time = buf.readUnsignedInt() & 0x3fffffff;
-                time += 1167609600; // 2007-01-01 00:00:00
-                position.setTime(new Date(time * 1000));
-                
-                globalMask = buf.readUnsignedByte();
-                if (!checkBit(globalMask, 0)) {
-                    return null;
-                }
-                
-                int locationMask = buf.readUnsignedByte();
-                
-                if (checkBit(locationMask, 0)) {
-                    position.setLatitude(Double.valueOf(buf.readFloat()));
-                    position.setLongitude(Double.valueOf(buf.readFloat()));
-                }
-                
-                if (checkBit(locationMask, 1)) {
-                    position.setAltitude((double) buf.readUnsignedShort());
-                }
-                
-                if (checkBit(locationMask, 2)) {
-                    position.setCourse(buf.readUnsignedByte() * 360.0 / 256);
-                }
-                
-                if (checkBit(locationMask, 3)) {
-                    position.setSpeed(buf.readUnsignedByte() * 0.539957);
-                }
-                
-                if (checkBit(locationMask, 4)) {
-                    int satellites = buf.readUnsignedByte();
-                    extendedInfo.set("satellites", satellites);
-                    position.setValid(satellites >= 3);
-                }
-                
-                if (checkBit(locationMask, 5)) {
-                    extendedInfo.set("area", buf.readUnsignedShort());
-                    extendedInfo.set("cell", buf.readUnsignedShort());
-                }
-                
-                if (checkBit(locationMask, 6)) {
-                    extendedInfo.set("gsm", buf.readUnsignedByte());
-                }
-                
-                if (checkBit(locationMask, 7)) {
-                    extendedInfo.set("operator", buf.readUnsignedInt());
-                }
-
-            } else {
-
-                position.setTime(new Date(buf.readLong()));
-
-                extendedInfo.set("priority", buf.readUnsignedByte());
-
-                position.setLongitude(buf.readInt() / 10000000.0);
-                position.setLatitude(buf.readInt() / 10000000.0);
-                position.setAltitude((double) buf.readShort());
-                position.setCourse((double) buf.readUnsignedShort());
-
-                int satellites = buf.readUnsignedByte();
-                extendedInfo.set("satellites", satellites);
-
-                position.setValid(satellites != 0);
-
-                position.setSpeed(buf.readUnsignedShort() * 0.539957);
-
-                extendedInfo.set("event", buf.readUnsignedByte());
-
-                buf.readUnsignedByte(); // total IO data records
-
-            }
+            long time = readUInt(buf); //buf.readUnsignedInt();  //4b
+            //time += 1167609600; // 2007-01-01 00:00:00
+            //position.setTime(new Date(time * 1000));
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+            java.util.Date date= new java.util.Date((time*1000));
+            position.setTime(date);
             
-            // Read 1 byte data
-            if (checkBit(globalMask, 1)) {
-                int cnt = buf.readUnsignedByte();
-                for (int j = 0; j < cnt; j++) {
-                    extendedInfo.set("io" + buf.readUnsignedByte(), buf.readUnsignedByte());
-                }
-            }
-
+            long lat = readUInt(buf); //buf.readInt(); //4b // / 600000.0;
+            position.setLatitude(lat / 60000.0); //* 50 / 3 / 10000000.0);
             
-            // Read 2 byte data
-            if (checkBit(globalMask, 2)) {
-                int cnt = buf.readUnsignedByte();
-                for (int j = 0; j < cnt; j++) {
-                    extendedInfo.set("io" + buf.readUnsignedByte(), buf.readUnsignedShort());
-                }
-            }
-
-            // Read 4 byte data
-            if (checkBit(globalMask, 3)) {
-                int cnt = buf.readUnsignedByte();
-                for (int j = 0; j < cnt; j++) {
-                    extendedInfo.set("io" + buf.readUnsignedByte(), buf.readUnsignedInt());
-                }
-            }
-
-            // Read 8 byte data
-            if (codec == CODEC_FM4X00) {
-                int cnt = buf.readUnsignedByte();
-                for (int j = 0; j < cnt; j++) {
-                    extendedInfo.set("io" + buf.readUnsignedByte(), buf.readLong());
-                }
-            }
-        
+            long lon = readUInt(buf); //buf.readInt(); //4b // / 600000.0;
+            position.setLongitude(lon / 60000.0); //* 50 / 3 / 10000000.0);
+            
+            double speed = buf.readUnsignedByte()* 1.85; //1b
+            position.setSpeed(speed);
+            
+            double direct = (buf.readUnsignedByte() * 360) / 255; //1b
+            position.setCourse(direct);
+            
+            double sp = buf.readUnsignedByte(); //1b //ускорение
+            extendedInfo.set("acceleration", sp);
+            
+            short flags = buf.readUnsignedByte(); //1b
+            position.setValid((flags & 0x08) != 0);
+            
+            String sensors = "";  //8b
+            
+            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //1
+            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //2
+            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //3
+            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //4
+            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //5
+            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //6
+            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //7
+            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //8
+            extendedInfo.set("sensors", sensors);
+            
+            long events = buf.readUnsignedByte(); //3b
+            events += (buf.readUnsignedByte() << 8);
+            events += (buf.readUnsignedByte() << 16);
+            extendedInfo.set("events", events);
+            
+            short crc = buf.readUnsignedByte(); //1b
+            
+            
+            //extendedInfo.set("io" + buf.readUnsignedByte(), buf.readLong());
             position.setExtendedInfo(extendedInfo.getStyle(getDataManager().getStyleInfo()));
             positions.add(position);
         }
         
         if (channel != null) {
-            ChannelBuffer response = ChannelBuffers.directBuffer(4);
-            response.writeInt(count);
+            ChannelBuffer response = ChannelBuffers.directBuffer(1);
+            response.writeByte(48);
             channel.write(response);
-            sendCommand(channel);
         }
-        
         return positions;
     }
     
@@ -359,24 +318,85 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         return commands;
     }
     
+    private void packetClear(){
+        packetId = "";
+        packetLen = 0;
+        packetIndex = 0;
+        packetBuf = null;
+    }
+    
     @Override
     protected Object decode(ChannelHandlerContext ctx, Channel channel, Object msg)
             throws Exception {
         
         ChannelBuffer buf = (ChannelBuffer) msg;
         
-        if ((buf.getUnsignedShort(0)==0)&&(buf.getUnsignedShort(2)>0)){
-            Log.debug("config");
-            return parseCommand(channel, buf);
-            
-        } else if (buf.getUnsignedShort(0) > 0) {
-            Log.debug("parseIdentification");
+        String PacketID = buf.toString(0, 4, Charset.defaultCharset());
+        
+        if("%%AU".equals(PacketID)){
             parseIdentification(channel, buf);
+            
+            packetClear();
         }
-        else {
-            Log.debug("parseLocation");
-            return parseLocation(channel, buf);
+        else if("%%AE".equals(PacketID)){
+            
+            packetClear();
         }
+        else if("%%CR".equals(PacketID)){
+            //CMD_RE_TT = Encoding.ASCII.GetBytes("%%CR");
+
+        }
+        else if("%%MB".equals(PacketID)){
+            packetClear();
+            
+            short count = buf.getUnsignedByte(ATR_LENGTH);
+            
+            if((count+ATR_LENGTH+1)==buf.readableBytes()){
+                //Пакет полный     
+                parseLocation(channel, buf);
+                packetClear();
+            }
+            else {
+                packetIndex = buf.readableBytes();
+                packetId = PacketID;
+                packetLen = (count*BIN_LENGTH)+ATR_LENGTH+1;
+                packetBuf = ChannelBuffers.directBuffer(packetLen);
+                packetBuf.writeBytes(buf);
+            }
+        }        
+        else if("%%PB".equals(PacketID)){
+            //PK_MBIN_TT = Encoding.ASCII.GetBytes("%%PB");
+        }
+        else if("%%RE".equals(PacketID)){
+            //RESP_TT = Encoding.ASCII.GetBytes("%%RE");
+        }
+        else if("%%".equals(PacketID)){ //A1
+            //public static readonly int A1_ATR_LENGTH = 3;
+            //public static readonly int A1_EMAIL_SIZE = 13;
+            //public static readonly int ATR_LENGTH = 4;
+
+        }
+        else if("%%MB".equals(packetId) && ((packetIndex + buf.readableBytes())<=packetLen)){
+            packetIndex += buf.readableBytes();
+            packetBuf.writeBytes(buf);
+        }
+        
+        if(("%%MB".equals(packetId)) && (packetIndex == packetLen)){
+            return parseLocation(channel, packetBuf);
+        }
+        
+        //if ((buf.getUnsignedShort(0)==0)&&(buf.getUnsignedShort(2)>0)){
+        //    Log.debug("config");
+        //    return parseCommand(channel, buf);
+        //    
+        //} else if (buf.getUnsignedShort(0) > 0) {
+        //    Log.debug("parseIdentification");
+        //    parseIdentification(channel, buf);
+        //}
+        //else {
+        //    Log.debug("parseLocation");
+        //    return parseLocation(channel, buf);
+        //}
         
         return null;
     }
