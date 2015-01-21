@@ -180,6 +180,8 @@ public class ServerManager {
         initTramigoServer("tramigo");
         initTr900Server("tr900");
         initArdi01Server("ardi01");
+        initXt013Server("xt013");
+        initAutoFonServer("autofon");
 
         initProtocolDetector();
 
@@ -1293,6 +1295,31 @@ public class ServerManager {
                     pipeline.addLast("frameDecoder", new LineBasedFrameDecoder(1024));
                     pipeline.addLast("stringDecoder", new StringDecoder());
                     pipeline.addLast("objectDecoder", new Ardi01ProtocolDecoder(dataManager, protocol, properties));
+                }
+            });
+        }
+    }
+
+    private void initXt013Server(final String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    pipeline.addLast("frameDecoder", new LineBasedFrameDecoder(1024));
+                    pipeline.addLast("stringDecoder", new StringDecoder());
+                    pipeline.addLast("objectDecoder", new Xt013ProtocolDecoder(dataManager, protocol, properties));
+                }
+            });
+        }
+    }
+
+    private void initAutoFonServer(final String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    pipeline.addLast("frameDecoder", new AutoFonFrameDecoder());
+                    pipeline.addLast("objectDecoder", new AutoFonProtocolDecoder(dataManager, protocol, properties));
                 }
             });
         }
