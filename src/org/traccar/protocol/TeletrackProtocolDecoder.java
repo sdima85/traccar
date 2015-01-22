@@ -45,10 +45,12 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
     private int BIN_LENGTH = 0x20; //32
     private int ATR_LENGTH = 4;
     
+    private int A1_ATR_LENGTH = 3;
+    private int A1_EMAIL_SIZE = 13;
+    
     private ChannelBuffer getAck(boolean error){
         ChannelBuffer response = ChannelBuffers.directBuffer(1);
-        //response.writeByte(0x30); //'0'
-        
+
         short r = 0x30; //Признак пакета
         //Результат обработки запроса.
         //0b0 – Все ок.
@@ -62,28 +64,49 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
             //0b1 – Очередь не пуста.
             r |= (commands.size() > 0 ? 4 : 0);
         }        
-        
-        response.writeByte(r);
-        
+        response.writeByte(r);        
         return response;
     }
 
-    private void parseIdentification(Channel channel, ChannelBuffer buf) {
+    private void parseIdentification(Channel channel, ChannelBuffer buf, boolean ext) {
         boolean result = false;
         
-        String devID = buf.toString(4, 4, Charset.defaultCharset());
-        int pwdLen = 0;
+        buf.skipBytes(ATR_LENGTH);
+        
+        if(ext){
+            //версия протокола
+            int protocolLen = 0;
+            for (int i=buf.readerIndex(); i < buf.writerIndex(); i++){
+                if(buf.getByte(i) == 0){
+                    protocolLen = i - buf.readerIndex();
+                    break;
+                }
+            }
+            String protocol = buf.toString(buf.readerIndex(), protocolLen, Charset.defaultCharset());
+            buf.skipBytes(protocolLen+1);
+        }
+        //Логин
+        int loginLen = 0;
+        for (int i=buf.readerIndex(); i < buf.writerIndex(); i++){
+            if(buf.getByte(i) == 0){
+                loginLen = i - buf.readerIndex();
+                break;
+            }
+        }
+        
+        String devID = buf.toString(buf.readerIndex(), loginLen, Charset.defaultCharset());
+        buf.skipBytes(loginLen+1);
         
         //Проверка пароля ???
-        /*
-        for (int i=9; i < buf.writerIndex(); i++){
+        int pwdLen = 0;
+        for (int i=buf.readerIndex(); i < buf.writerIndex(); i++){
             if(buf.getByte(i) == 0){
-                pwdLen = i - 9;
+                pwdLen = i - buf.readerIndex();
                 break;
             }
         }        
-        String DevPwd = buf.toString(9, pwdLen ,Charset.defaultCharset());
-        */
+        String DevPwd = buf.toString(buf.readerIndex(), pwdLen ,Charset.defaultCharset());
+        
         try {
             Device device = getDataManager().getDeviceByImei(devID);
             deviceImei = devID;
@@ -96,16 +119,12 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         }
         
         if (channel != null) {
-            //ChannelBuffer response = ChannelBuffers.directBuffer(1);
-            //response.writeByte(result ? 1 : 0);
-            //response.writeByte(0x30); //'0'
-            //channel.write(response);
             channel.write(getAck(false));
             
             sendCommand(channel);
         }
     }
-
+    
     private long readUInt(ChannelBuffer buf){
         int b0 = buf.readUnsignedByte();
         int b1 = buf.readUnsignedByte();
@@ -137,7 +156,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         
         for (int i = 0; i < respCmd; i++) {
             DeviceCommand command = commands.get(i);
-            
+            /*
             if((command.getCommand() != null) && (!"".equals(command.getCommand()))){ //command hex
                 String cmd = command.getCommand();
                 if(sendData == null){                    
@@ -166,7 +185,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
                         }
                     }
                 }
-            }
+            }*/
         }
         if(sendData != null) {
             int cmdLen = sendData.length; //(cmd.length()/2);
@@ -198,78 +217,157 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         }        
     }
     
-    private List<Position> parseLocation(Channel channel, ChannelBuffer buf) {
+    private Position parseLocation(ChannelBuffer buf){
+        Position position = new Position();
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+
+        position.setDeviceId(deviceId);
+        position.setTableName(tableName);
+        position.setImei(deviceImei);
+
+        long logId = readUInt(buf); //4b
+        extendedInfo.set("logId", logId);
+
+        long time = readUInt(buf); //4b
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+        java.util.Date date= new java.util.Date((time*1000));
+        position.setTime(date);
+
+        long lat = readUInt(buf); //buf.readInt(); //4b // / 600000.0;
+        position.setLatitude(lat / 60000.0); //* 50 / 3 / 10000000.0);
+
+        long lon = readUInt(buf); //buf.readInt(); //4b // / 600000.0;
+        position.setLongitude(lon / 60000.0); //* 50 / 3 / 10000000.0);
+
+        double speed = buf.readUnsignedByte()* 1.85; //1b
+        position.setSpeed(speed);
+
+        double direct = (buf.readUnsignedByte() * 360) / 255; //1b
+        position.setCourse(direct);
+
+        double sp = buf.readUnsignedByte(); //1b //ускорение
+        extendedInfo.set("acceleration", sp);
+
+        short flags = buf.readUnsignedByte(); //1b
+        position.setValid((flags & 0x08) != 0);
+
+        String sensors = "";  //8b
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //1
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //2
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //3
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //4
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //5
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //6
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //7
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //8
+        extendedInfo.set("sensors", sensors);
+
+        long events = buf.readUnsignedByte(); //3b
+        events += (buf.readUnsignedByte() << 8);
+        events += (buf.readUnsignedByte() << 16);
+        extendedInfo.set("events", events);
+
+        short crc = buf.readUnsignedByte(); //1b
+        
+        position.setExtendedInfo(extendedInfo.getStyle(getDataManager().getStyleInfo()));    
+        return position; 
+    }
+    
+    private List<Position> parseMultiBinLocation(Channel channel, ChannelBuffer buf) {
         List<Position> positions = new LinkedList<Position>();
         
         buf.skipBytes(ATR_LENGTH); // marker
         short count = buf.readUnsignedByte();
         
         for (int i = 0; i < count; i++) {
-            Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
-            
-            position.setDeviceId(deviceId);
-            position.setTableName(tableName);
-            position.setImei(deviceImei);
-            
-            long logId = readUInt(buf); //buf.readUnsignedInt(); //4b
-            extendedInfo.set("logId", logId);
-            
-            long time = readUInt(buf); //buf.readUnsignedInt();  //4b
-            //time += 1167609600; // 2007-01-01 00:00:00
-            //position.setTime(new Date(time * 1000));
-            TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
-            java.util.Date date= new java.util.Date((time*1000));
-            position.setTime(date);
-            
-            long lat = readUInt(buf); //buf.readInt(); //4b // / 600000.0;
-            position.setLatitude(lat / 60000.0); //* 50 / 3 / 10000000.0);
-            
-            long lon = readUInt(buf); //buf.readInt(); //4b // / 600000.0;
-            position.setLongitude(lon / 60000.0); //* 50 / 3 / 10000000.0);
-            
-            double speed = buf.readUnsignedByte()* 1.85; //1b
-            position.setSpeed(speed);
-            
-            double direct = (buf.readUnsignedByte() * 360) / 255; //1b
-            position.setCourse(direct);
-            
-            double sp = buf.readUnsignedByte(); //1b //ускорение
-            extendedInfo.set("acceleration", sp);
-            
-            short flags = buf.readUnsignedByte(); //1b
-            position.setValid((flags & 0x08) != 0);
-            
-            String sensors = "";  //8b
-            
-            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //1
-            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //2
-            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //3
-            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //4
-            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //5
-            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //6
-            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //7
-            sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //8
-            extendedInfo.set("sensors", sensors);
-            
-            long events = buf.readUnsignedByte(); //3b
-            events += (buf.readUnsignedByte() << 8);
-            events += (buf.readUnsignedByte() << 16);
-            extendedInfo.set("events", events);
-            
-            short crc = buf.readUnsignedByte(); //1b
-            
-            
-            //extendedInfo.set("io" + buf.readUnsignedByte(), buf.readLong());
-            position.setExtendedInfo(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+            Position position = parseLocation(buf);
             positions.add(position);
         }
         
         if (channel != null) {
-            //ChannelBuffer response = ChannelBuffers.directBuffer(1);
-            //response.writeByte(48);
-            //channel.write(response);
-            channel.write(getAck(false));
+            ChannelBuffer response = getAck(false);
+            channel.write(response);
+        }
+        return positions;
+    }
+    
+    private int calcLenPackedMultiBin(ChannelBuffer buf){
+        //К сожалению, в этом пакете не предусмотрено дополнительное поле 
+        //с информацией о размере пакета PackedMultiBin, поэтому определить 
+        //байт, в котором находится контрольная сумма, удастся только 
+        //после «прохода» по всем упакованным данным.
+        
+        int len = ATR_LENGTH;
+        short count = (short) (buf.getUnsignedByte(len) - 1);
+        len += 1;
+        
+        // Первый целый пакет
+        len += BIN_LENGTH;
+        
+        //
+        for (int i = 0; i < count; i++) {
+            
+            if((len+5) > buf.readableBytes()){
+                //len = 0;
+                //break;
+                return 0;
+            }
+            
+            long mask = buf.getUnsignedInt(len);  
+            len += 4;
+            
+            long val =  2147483648L;
+            for (int j = 0; j < BIN_LENGTH; j++){
+                long check = mask & val;
+                if(check == val){
+                    len += 1;
+                    //short nval = buf.readUnsignedByte();
+                    //bufStart.setByte(j, nval);
+                }
+
+                val = val >> 1;
+            }
+        }
+        
+        len += 1; //CRC
+        if(len > buf.readableBytes()){
+            return 0;
+        }
+        return len;
+    }
+    
+    private List<Position> parsePackedMultiBinLocation(Channel channel, ChannelBuffer buf){
+        List<Position> positions = new LinkedList<Position>();        
+        buf.skipBytes(ATR_LENGTH); // marker
+        
+        short count = buf.readUnsignedByte();
+        if(count > 0){
+            ChannelBuffer bufStart = ChannelBuffers.directBuffer(BIN_LENGTH);
+            bufStart.writeBytes(buf, buf.readerIndex(), BIN_LENGTH);
+            buf.skipBytes(BIN_LENGTH);
+            
+            Position positionStart = parseLocation(bufStart);
+            positions.add(positionStart);
+            bufStart.readerIndex(0);
+            count -= 1;            
+            //Количество инкапсулированных пакетов Bin (от 0 до 255). 
+            //Примечание: для получения информации о состоянии очереди команд 
+            //можно использовать пустой пакет PackedMultiBin.
+            for (int i = 0; i < count; i++) {
+                long mask = buf.readUnsignedInt();  
+                long val =  2147483648L;
+                for (int j = 0; j < BIN_LENGTH; j++){
+                    long check = mask & val;
+                    if(check == val){
+                        short nval = buf.readUnsignedByte();                        
+                        bufStart.setByte(j, nval);
+                    }                    
+                    val = val >> 1;
+                }                
+                Position position = parseLocation(bufStart);
+                positions.add(position);
+                bufStart.readerIndex(0);
+            }            
         }
         return positions;
     }
@@ -278,11 +376,14 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
     * Разбор команды от устройства
     */
     private List<DeviceCommand> parseCommand(Channel channel, ChannelBuffer buf){
+        List<DeviceCommand> commands = new LinkedList<DeviceCommand>();      
+        
+        /*
         buf.skipBytes(2); //
         buf.readUnsignedShort(); // data length
         int count = buf.readUnsignedByte(); // count
         
-        List<DeviceCommand> commands = new LinkedList<DeviceCommand>();        
+          
 
         for(int i = 0; i < count; i++){
             ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
@@ -340,7 +441,54 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
             command.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
             commands.add(command);
         }
+        */
         return commands;
+    }
+    
+    private DeviceCommand parseA1(Channel channel, ChannelBuffer buf){
+        if(!"%%".equals(buf.toString(A1_EMAIL_SIZE+1, 2, Charset.defaultCharset()))){
+            // Признак начала пакета расположен не на своем месте в позиции {0}, ожидалось в позиции 14
+            return null;
+        }
+        byte[] destinationArray = new byte[0x90]; //144        
+        buf.getBytes(0x10, destinationArray, 0, 0x90);
+        
+        //Level1Converter
+        int num2 = SymbolToValue(destinationArray[2]) << 2;
+        if (num2 != 0x88)
+        {
+            //throw new A1Exception(string.Format(
+            //"A1_6. Указанная длина {0} в пакете уровня LEVEL1 не соответствует ожиданиям - {1}.", num2, (byte) 0x88));
+            return null;
+        }
+        //
+        byte[] buffer2 = new byte[2];
+        //Array.Copy(destinationArray, 0, buffer2, 0, 2);
+        System.arraycopy(destinationArray, 0, buffer2, 0, buffer2.length );
+        //Level1Converter
+        BytesToString(buffer2);
+        //Level1Converter
+        short num3 = SymbolToValue(destinationArray[7]);
+        //Util
+        byte num4 = CalculateLevel1CRC(destinationArray, 0, num2);
+        if(num3 != num4){
+            //throw new A1Exception(string.Format(
+            //"A1_4. CRC не совпадает. Значение указанное в пакете {0}, расчитанное - {1}.", num3, num4));
+        }
+        byte[] buffer3 = new byte[4];
+        //Array.Copy(destinationArray, 3, buffer3, 0, 4);
+        System.arraycopy(destinationArray, 3, buffer3, 0, 4);
+        byte[] buffer4 = new byte[0x88];
+        //Array.Copy(destinationArray, 8, buffer4, 0, 0x88);
+        System.arraycopy(destinationArray, 8, buffer4, 0, 0x88);
+        
+        //CommonDescription description = DecodeLevel3Message(Decode6BitTo8(buffer4));
+        String ShortID = BytesToString(buffer3);
+        //description.Source = message;
+        //description.Message = Util.GetStringFromByteArray(message);
+
+
+        return null;
     }
     
     private void packetClear(){
@@ -350,35 +498,41 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         packetBuf = null;
     }
     
+    
     @Override
     protected Object decode(ChannelHandlerContext ctx, Channel channel, Object msg)
             throws Exception {
         
-        ChannelBuffer buf = (ChannelBuffer) msg;
-        
+        ChannelBuffer buf = (ChannelBuffer) msg;        
         String PacketID = buf.toString(0, 4, Charset.defaultCharset());
         
+        //A1
+        if(buf.readableBytes() == 160){
+            String str = buf.toString(A1_EMAIL_SIZE+1, 2, Charset.defaultCharset());
+            if("%%".equals(str)){
+                PacketID = "A1Packet";
+            }
+        }
+        
         if("%%AU".equals(PacketID)){
-            parseIdentification(channel, buf);
-            
+            parseIdentification(channel, buf, false);
             packetClear();
         }
         else if("%%AE".equals(PacketID)){
-            
+            parseIdentification(channel, buf, true);
             packetClear();
         }
         else if("%%CR".equals(PacketID)){
-            //CMD_RE_TT = Encoding.ASCII.GetBytes("%%CR");
-
+            //CmdRequest – запрос серверу на отсылку команды A1; отправляется только клиентом.
+            sendCommand(channel);
         }
         else if("%%MB".equals(PacketID)){
-            packetClear();
-            
+            packetClear();            
             short count = buf.getUnsignedByte(ATR_LENGTH);
             
-            if((count+ATR_LENGTH+1)==buf.readableBytes()){
+            if(((count*BIN_LENGTH)+ATR_LENGTH+1)==buf.readableBytes()){
                 //Пакет полный     
-                parseLocation(channel, buf);
+                parseMultiBinLocation(channel, buf);
                 packetClear();
             }
             else {
@@ -390,428 +544,267 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
             }
         }        
         else if("%%PB".equals(PacketID)){
-            //PK_MBIN_TT = Encoding.ASCII.GetBytes("%%PB");
+            packetClear();
+            //проверка длинны пакета
+            int len = calcLenPackedMultiBin(buf);
+            //
+            if(len==buf.readableBytes()){
+                //Пакет полный     
+                parsePackedMultiBinLocation(channel, buf);
+                packetClear();
+            }
+            else {
+                packetIndex = 0; //buf.readableBytes();
+                packetId = PacketID;
+                packetLen = len;
+                packetBuf = ChannelBuffers.directBuffer(4096);
+                packetBuf.writeBytes(buf);
+            }
         }
         else if("%%RE".equals(PacketID)){
             //RESP_TT = Encoding.ASCII.GetBytes("%%RE");
+            //Формат пакета Response - команда принята на устройстве
+            
+            buf.skipBytes(ATR_LENGTH);
+            //Признак пакета 4 байта
+            
+            short res = buf.readUnsignedByte();
+            //Код ответа 1 байт
+            //0x00 – команда принята.
+            //0x01 – ошибка обработки команды.
+            
+            //extendedInfo.set("command", "getparam");
+            //extendedInfo.set("param", paramId);
+            //extendedInfo.set("isset", isSet);   
         }
-        else if("%%".equals(PacketID)){ //A1
-            //public static readonly int A1_ATR_LENGTH = 3;
-            //public static readonly int A1_EMAIL_SIZE = 13;
-            //public static readonly int ATR_LENGTH = 4;
-
+        else if("A1Packet".equals(PacketID)){ //A1            
+            return parseA1(channel, buf);
+            
         }
-        else if("%%MB".equals(packetId) && ((packetIndex + buf.readableBytes())<=packetLen)){
+        // || "%%PB".equals(packetId)
+        else if(("%%MB".equals(packetId)) && ((packetIndex + buf.readableBytes())<=packetLen)){
             packetIndex += buf.readableBytes();
             packetBuf.writeBytes(buf);
         }
+        else if(buf.readableBytes() == 32){ //BIN
+            Position position = parseLocation(buf);            
+            if (channel != null) {
+                ChannelBuffer response = getAck(false);
+                channel.write(response);
+            }
+            return position;
+        }      
         
+        // Обработка склеенных данных
         if(("%%MB".equals(packetId)) && (packetIndex == packetLen)){
-            return parseLocation(channel, packetBuf);
+            List<Position> positions = parseMultiBinLocation(channel, packetBuf);
+            packetClear();
+            return positions;
         }
-        
-        //if ((buf.getUnsignedShort(0)==0)&&(buf.getUnsignedShort(2)>0)){
-        //    Log.debug("config");
-        //    return parseCommand(channel, buf);
-        //    
-        //} else if (buf.getUnsignedShort(0) > 0) {
-        //    Log.debug("parseIdentification");
-        //    parseIdentification(channel, buf);
-        //}
-        //else {
-        //    Log.debug("parseLocation");
-        //    return parseLocation(channel, buf);
-        //}
-        
+        else if(("%%PB".equals(packetId))){
+            if(packetIndex == 0){
+                packetIndex = 1;
+            }
+            else {
+                packetBuf.writeBytes(buf);
+                int len = calcLenPackedMultiBin(buf);
+                
+                if(len > 0){
+                    List<Position> positions = parsePackedMultiBinLocation(channel, packetBuf);
+                    packetClear();
+                    return positions;
+                }
+            }
+        }
         return null;
     }
 
-    /*
-    * Разбор значения по номеру команды
-    */
-    private String getReadFromIdConfig(ChannelBuffer buf, int paramId, int length){
-        String paramVal = "";
-        switch (paramId) {
-            case 242://Точка доступа GPRS ( по умолчанию 3g.utel.ua )
-            case 243://Логин доступа GPRS ( по умолчанию не установлен. )
-            case 244://Пароль доступа GPRS ( по умолчанию не установлен. )
-            case 245://server
-            case 252://Логин доступа по СМС
-            case 253://Пароль доступа по СМС
-            case 261://Авторизированный телефонный номер
-            case 262://
-            case 263://
-            case 264://
-            case 265://
-            case 266://
-            case 267://
-            case 268://
-            case 269://Авторизированный телефонный номер
-            case 910://Пароль доступа к бутлоадеру ( по умолчанию 11111)
-            
-            paramVal = buf.toString(buf.readerIndex(), length-1, Charset.defaultCharset());
-            buf.skipBytes(length);
-            break;
-
-            case 11://Период съёма по времени при выключенном зажигании ( по умолчанию 30 сек)
-            case 12://Период съёма по расстоянию ( по умолчанию 500 м)
-            case 13://Период съёма по азимуту ( по умолчанию 10° )
-            case 232://Кол-во записей в пакете ( по умолчанию 0 )
-            case 246://port
-            case 284://Таймаут начала движения по акселерометру ( по умолчанию 20*0,1=2сек.)
-            case 285://Таймаут остановка движения по акселерометру ( по умолчанию 50 *0,1=5сек.)
-            case 270://Период передачи данных на сервер ( по умолчанию 60 сек)
-            case 903://Период съёма по времени при включенном зажигании ( по умолчанию 30 сек)
-            case 905://Период ожидания между попытками в серии ( по умолчанию 60 сек)
-            case 906://Период ожидания между сериями попыток ( по умолчанию 300 сек)
-            
-                
-            paramVal = "" + buf.readUnsignedShort();
-            break;
-
-            case 281://Угол отклонения акселерометра по оси X ( по умолчанию 3°)
-            case 282://Y
-            case 283://Z
-            case 900://Разрешение съёма по времени ( по умолчанию 1)
-            case 901://Разрешение съёма по расстоянию    
-            case 902://Разрешение съёма по азимуту ( по умолчанию 1)
-            case 904://Кол-во попыток в серии соединения с сервером ( по умолчанию 3)
-            case 911://Разрешение сна по акселерометру ( по умолчанию 0)
-                
-            case 912://Кол-во гудков перед автоподъемом трубки ( по умолчанию 3)
-            //case 912://Автоподъём трубки: 0 – запрещен. Число больше 5-10 таймаут составит 30-60 сек.
-                
-            case 915://азрешение обслуживания электронного ключа (смарт-карты). и управления выходами
-//0 – обслуживание запрещено, iButton
-//9 – управление выходом DOUT1,
-//10 – управление выходом DOUT2, RFID
-//5 – управление выходом DOUT1,
-//6 – управление выходом DOUT2, ( по умолчанию 0)
-            case 991://Разрешение включения электронного ключа идентификатора.
-//1-включен,0-выключен ( по умолчанию 0)
-            case 990://Разрешение обслуживания термодатчиков 1-включен, 0-выключен. ( по умолчанию 0)
-            case 993://Датчик топлива. 0 - передаётся абсолютный расход топлива. 1 - передаётся мгновенный расход топлива. ( по умолчанию 0)
-            case 992://Разрешение настройки количества спутников при потерте сигнала GPS ( по умолчанию отключен )
-            case 917://Разрешение режима выбора оператора. 1- включен, 0-выключен ( по умолчанию 0)
-            case 959://Период съёма=(Значение+1)*50мС Если установлено 19 то период составит (19+1)*50 = 1000 мС по умолчанию = 19
-                //Периода съёма данных AIN1 медианной фильтрацией на 7 отсчётов.
-            case 980://Период съёма = (Значение+1)*50мС Если установлено 19 то период составит (19+1)*50 = 1000 мС по умолчанию = 19
-                //Периода съёма данных AIN2 медианной фильтрацией на 7 отсчётов.
-            case 918://Передача данных gps сигнала, при минимальной скорости ( по умолчанию 5 км/ч)
-            case 808://Беспроводной датчик для прицепного оборудования ( сетевой адрес 4) 1-включен 0-выключен ( по умолчанию 0)
-            case 349://Фильтр для цифровых входов dlow3/dlow4 (умолчанию 5) диапазон 1-20 при 1 - 10мС, при 2 - 20мС, при 20 - 200 мС уровни длительность меньше чем заданный будут фильтроваться
-            case 819://Разрешение использования значений последнего валидного уровня топлива.
-//Фильтрованного и не фильтрованного датчика уровня топлива. 1-включен 0-выключен ( по умолчанию 0)  
-            case 818://Введена проверка PIN-кода SIM-карты.
-            case 186://Период периодической перезагрузки устройства в часах 0-255 (0-периодическая перезагрузка не выполняется)
-            case 187://Тип перезагрузки, 0-полная перезагрузка устройства, 1-только модем
-            case 197://Настройка периода опроса для 4-х датчиков уровня топлива RS485. (по умолчанию 100)
-            case 198://Настройка периода опроса RS485 RFID (по умолчанию 100)
-            case 199://Настройка периода опроса RS485 Беспроводного датчика (по умолчанию 100)  
-            case 208://Настройка периода опроса RS485 iButton (по умолчанию 100)
-            case 206://Настройка периода опроса RS485 Tsens (по умолчанию 100)
-            case 994://Ответ на входящий звонок с помощью цифровых входов.
-//1-6 - ID IO-элемента - цифрового входа, с помощью которого осуществляется ответ на входящий вызов. (0 - ответ с помощью цифрового входа запрещён)
-            case 995://Настройки гарнитуры: Микрофон Значения: 0 - 7 (по молчанию 4)
-            case 996://Настройки гарнитуры: Динамик Значения: 0 - 14 (по молчанию 7)
-            case 950://коэффициент F для фильтра Калмана
-            case 951://коэффициент Q для фильтра Калмана
-            case 952://коэффициент H для фильтра Калмана
-            case 953://коэффициент R для фильтра Калмана при отсутствии движения
-            case 954://коэффициент R для фильтра Калмана при наличии движения
-            case 209://Настройка переключения фильтров, для фильтрованных датчиков уровня топлива.
-                //(0-фильтр Баттерворта)
-                //(1-фильтр Калмана)
-            case 188://Хост 2
-            case 189://Порт 2
-            case 196://Разрешение использования Host 2 Port 2
-                //( 1 –включен) (0-выключен)
-            paramVal = "" + buf.readUnsignedByte();
-            break;
+    public static short SymbolToValue(byte symbol) {
+        byte ASCII_CODE_A = 65; //Convert.ToByte('A');        
+        byte num = 0;        
+        int symbolCode = symbol & 0xFF;      
+        
+        char ch = (char) (symbolCode & 0xFF); //Convert.ToChar(symbolCode);
+        if ((ch >= 'A') && (ch <= 'Z')){
+            return (byte) (symbolCode - ASCII_CODE_A);
         }
-        return paramVal;
+        if ((ch >= 'a') && (ch <= 'z')){
+            byte ca = 97;//(byte) str.charAt('a');
+            return (byte) ((symbolCode - ca) + 0x1a);
+        }
+        if ((ch >= '0') && (ch <= '9')){
+            byte c0 = 48;//(byte) .charAt('0');
+            return (byte) ((symbolCode - c0) + 0x34);
+        }
+        if (ch == '+'){
+            return 0x3e;
+        }
+        if (ch == '-'){
+            return 0x3f;
+        }
+        if ((symbolCode >= 0x3a) && (symbolCode <= 0x3f)){
+            num = (byte) ((symbolCode - 0x3a) + ASCII_CODE_A);
+        }
+        return num;
+    }
+
+    public static String BytesToString(byte[] source){
+        if (source == null){
+            //throw new ArgumentNullException("source", "Не передан массив байт source");
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < source.length; i++){
+            builder.append((char) SymbolToValue(source[i]));
+        }
+        return builder.toString();
+    }
+
+    private static byte CalculateLevel1CRC(byte[] source, int startIndex, int length){
+        if ((source == null) || (source.length == 0)){
+            //throw new ArgumentNullException("source", "Не передан массив байт source");
+            return 0;
+        }
+        if ((startIndex < 0) || (startIndex >= source.length)){
+            //throw new ArgumentOutOfRangeException(
+            //"startIndex", "Для параметра startIndex должны выполняться условия: (startIndex >= 0) && (startIndex < source.Length)");
+            return 0;
+        }
+        int num = startIndex + length;
+        if ((length <= 0) || (num >= source.length)){
+            //throw new ArgumentOutOfRangeException(
+            //"length", "Для параметра length должны выполняться условия: (length > 0) && (startIndex + length < source.Length)");
+            return 0;
+        }
+        int num2 = 0;
+        for (int i = startIndex; i <= num; i++){
+            if (i != 7){
+                num2 += source[i];
+                num2 &= 0xff;
+            }
+        }
+        num2 = num2 >> 2;
+        num2 &= 0xff;
+        return (byte) num2;
+    }
+
+    private static byte[] Decode6BitTo8(byte[] dataBlock){
+        if (dataBlock == null){
+            //throw new ArgumentNullException("dataBlock", "Не передан массив байт dataBlock");
+            return null;
+        }
+        if (dataBlock.length != 0x88){
+            //throw new ArgumentException("dataBlock", string.Concat(new object[] { "Длина переданного массива dataBlock (", dataBlock.Length, ") не соответсвует требуемой длине - ", (byte) 0x88 }));
+            return null;
+        }
+        byte[] buffer = new byte[0x66];
+        int num = 0x22;
+        for (int i = 0; i < num; i++){
+            int index = 4 * i;
+            short num6 = SymbolToValue(dataBlock[index]);
+            short num7 = SymbolToValue(dataBlock[index + 1]);
+            short num8 = SymbolToValue(dataBlock[index + 2]);
+            short num9 = SymbolToValue(dataBlock[index + 3]);
+            byte num3 = (byte) (num6 << 2);
+            byte num4 = (byte) (num7 << 2);
+            byte num5 = (byte) (num8 << 2);
+            byte num10 = (byte) (num9 << 6);
+            num10 = (byte) (num10 >> 6);
+            byte num11 = (byte) (num9 << 4);
+            num11 = (byte) (num11 >> 6);
+            byte num12 = (byte) (num9 << 2);
+            num12 = (byte) (num12 >> 6);
+            num3 = (byte) (num3 + num10);
+            num4 = (byte) (num4 + num11);
+            num5 = (byte) (num5 + num12);
+            buffer[i * 3] = (byte) (num3 & 0xff);
+            buffer[(i * 3) + 1] = (byte) (num4 & 0xff);
+            buffer[(i * 3) + 2] = (byte) (num5 & 0xff);
+        }
+        return buffer;
     }
     
     /*
-    * Формирование команды для отправки
+    * Обработка сообщения на 3-ем уровне LEVEL3 
+    * Parameters command byte[102] Пакет команды LEVEL3
     */
-    private byte[] getBuildConfig(String cmd, int paramId, String value){
-        byte[] result = null;
-        byte lengthConfig = 4;
-        byte lengthData = 0;
-                
-        //Конфигурационный пакет от сервера – запрос значения параметра
-        if("getparam".equals(cmd)){
-            result = new byte[3];
-            result[0] = 32;
-            result[1] = (byte)(paramId >> 8);
-            result[2] = (byte)(paramId);
+    private CommonDescription DecodeLevel3Message(byte[] command){
+        CommonDescription smsAddrConfig;
+        if (command.length != 0x66){
+            //throw new A1Exception(string.Format(
+            //"A1_1. Длина пакета на уровне {0} не соответствует требованиям протокола. Ожидалось {1} байт, принято - {2}.", "LEVEL3", (byte) 0x66, command.Length));
         }
-        //Тип пакета – конфигурационный пакет установка значения параметра
-        if("setparam".equals(cmd)){
-            switch (paramId) {
-                case 242://Точка доступа GPRS ( по умолчанию 3g.utel.ua )
-                case 243://Логин доступа GPRS ( по умолчанию не установлен. )
-                case 244://Пароль доступа GPRS ( по умолчанию не установлен. )
-                case 245://server
-                case 252://Логин доступа по СМС
-                case 253://Пароль доступа по СМС
-                case 261://Авторизированный телефонный номер
-                case 262://
-                case 263://
-                case 264://
-                case 265://
-                case 266://
-                case 267://
-                case 268://
-                case 269://Авторизированный телефонный номер
-                case 910://Пароль доступа к бутлоадеру ( по умолчанию 11111)
-                    lengthData = (byte)(value.length() + 1);
-                    result = new byte[lengthConfig + lengthData];
-                    System.arraycopy(value.getBytes(), 0, result, lengthConfig, lengthData - 1);
-                    result[lengthConfig + lengthData] = 0;
-                    break;
-                case 11://Период съёма по времени при выключенном зажигании ( по умолчанию 30 сек)
-                case 12://Период съёма по расстоянию ( по умолчанию 500 м)
-                case 13://Период съёма по азимуту ( по умолчанию 10° )
-                case 232://Кол-во записей в пакете ( по умолчанию 0 )
-                case 246://port
-                case 284://Таймаут начала движения по акселерометру ( по умолчанию 20*0,1=2сек.)
-                case 285://Таймаут остановка движения по акселерометру ( по умолчанию 50 *0,1=5сек.)
-                case 270://Период передачи данных на сервер ( по умолчанию 60 сек)
-                case 903://Период съёма по времени при включенном зажигании ( по умолчанию 30 сек)
-                case 905://Период ожидания между попытками в серии ( по умолчанию 60 сек)
-                case 906://Период ожидания между сериями попыток ( по умолчанию 300 сек)
-                    lengthData = 2;
-                    result = new byte[lengthConfig + lengthData];
-                    int v = Integer.parseInt(value);
-                    result[lengthConfig + 0] = (byte)(v >>  8);
-                    result[lengthConfig + 1] = (byte)(v);
-                    break;
-                
-                case 186://Период периодической перезагрузки устройства в часах 0-255 (0-периодическая перезагрузка не выполняется)
-                case 187://Тип перезагрузки, 0-полная перезагрузка устройства, 1-только модем
-                case 188://Хост 2
-                case 189://Порт 2
-                case 196://Разрешение использования Host 2 Port 2 ( 1 –включен) (0-выключен)
-                case 197://Настройка периода опроса для 4-х датчиков уровня топлива RS485. (по умолчанию 100)
-                case 198://Настройка периода опроса RS485 RFID (по умолчанию 100)
-                case 199://Настройка периода опроса RS485 Беспроводного датчика (по умолчанию 100)  
-                
-                case 206://Настройка периода опроса RS485 Tsens (по умолчанию 100)
-                case 208://Настройка периода опроса RS485 iButton (по умолчанию 100)
-                case 209://Настройка переключения фильтров, для фильтрованных датчиков уровня топлива.
-                    //(0-фильтр Баттерворта)
-                    //(1-фильтр Калмана)
-                case 281://Угол отклонения акселерометра по оси X ( по умолчанию 3°)
-                case 282://Y
-                case 283://Z
-                case 349://Фильтр для цифровых входов dlow3/dlow4 (умолчанию 5) диапазон 1-20 при 1 - 10мС, при 2 - 20мС, при 20 - 200 мС уровни длительность меньше чем заданный будут фильтроваться
-                case 808://Беспроводной датчик для прицепного оборудования ( сетевой адрес 4) 1-включен 0-выключен ( по умолчанию 0)
-                case 818://Введена проверка PIN-кода SIM-карты.
-                case 819://Разрешение использования значений последнего валидного уровня топлива.
-    //Фильтрованного и не фильтрованного датчика уровня топлива. 1-включен 0-выключен ( по умолчанию 0)  
-                case 900://Разрешение съёма по времени ( по умолчанию 1)
-                case 901://Разрешение съёма по расстоянию    
-                case 902://Разрешение съёма по азимуту ( по умолчанию 1)
-                case 904://Кол-во попыток в серии соединения с сервером ( по умолчанию 3)
-                case 911://Разрешение сна по акселерометру ( по умолчанию 0)
-                case 912://Кол-во гудков перед автоподъемом трубки ( по умолчанию 3)
-                //case 912://Автоподъём трубки: 0 – запрещен. Число больше 5-10 таймаут составит 30-60 сек.
-                case 915://азрешение обслуживания электронного ключа (смарт-карты). и управления выходами
-    //0 – обслуживание запрещено, iButton
-    //9 – управление выходом DOUT1,
-    //10 – управление выходом DOUT2, RFID
-    //5 – управление выходом DOUT1,
-    //6 – управление выходом DOUT2, ( по умолчанию 0)
-                case 917://Разрешение режима выбора оператора. 1- включен, 0-выключен ( по умолчанию 0)
-                case 918://Передача данных gps сигнала, при минимальной скорости ( по умолчанию 5 км/ч)
-                case 950://коэффициент F для фильтра Калмана
-                case 951://коэффициент Q для фильтра Калмана
-                case 952://коэффициент H для фильтра Калмана
-                case 953://коэффициент R для фильтра Калмана при отсутствии движения
-                case 954://коэффициент R для фильтра Калмана при наличии движения
-                case 959://Период съёма=(Значение+1)*50мС Если установлено 19 то период составит (19+1)*50 = 1000 мС по умолчанию = 19
-                    //Периода съёма данных AIN1 медианной фильтрацией на 7 отсчётов.
-                case 980://Период съёма = (Значение+1)*50мС Если установлено 19 то период составит (19+1)*50 = 1000 мС по умолчанию = 19
-                    //Периода съёма данных AIN2 медианной фильтрацией на 7 отсчётов.
-                case 990://Разрешение обслуживания термодатчиков 1-включен, 0-выключен. ( по умолчанию 0)
-                case 991://Разрешение включения электронного ключа идентификатора.
-    //1-включен,0-выключен ( по умолчанию 0)
-                case 992://Разрешение настройки количества спутников при потерте сигнала GPS ( по умолчанию отключен )
-                case 993://Датчик топлива. 0 - передаётся абсолютный расход топлива. 1 - передаётся мгновенный расход топлива. ( по умолчанию 0)
-                case 994://Ответ на входящий звонок с помощью цифровых входов.
-    //1-6 - ID IO-элемента - цифрового входа, с помощью которого осуществляется ответ на входящий вызов. (0 - ответ с помощью цифрового входа запрещён)
-                case 995://Настройки гарнитуры: Микрофон Значения: 0 - 7 (по молчанию 4)
-                case 996://Настройки гарнитуры: Динамик Значения: 0 - 14 (по молчанию 7)
-                    lengthData = 1;                    
-                    result = new byte[lengthConfig + lengthData];
-                    result[lengthConfig + 0] = (byte) Integer.parseInt(value);
-                    break;
-            }
-            
-            if(result != null){
-                result[0] = 36;
-                result[1] = (byte)(paramId >>  8);
-                result[2] = (byte)(paramId);
-                result[3] = lengthData;
-            }
+        byte num = command[0];
+        ushort num2 = Level4Converter.BytesToUShort(command, 1);
+        byte[] destinationArray = new byte[0x63];
+        Array.Copy(command, 3, destinationArray, 0, 0x63);
+        switch (num){
+            case 0x15:
+            case 0x29:
+                smsAddrConfig = GetSmsAddrConfig(destinationArray);
+                break;
+
+            case 0x16:
+            case 0x2a:
+                smsAddrConfig = GetPhoneNumberConfig(destinationArray);
+                break;
+
+            case 0x17:
+            case 0x2b:
+                smsAddrConfig = GetEventConfig(destinationArray);
+                break;
+
+            case 0x18:
+            case 0x2c:
+                smsAddrConfig = GetUniqueConfig(destinationArray);
+                break;
+
+            case 0x19:
+                smsAddrConfig = GetZoneConfigConfirm(destinationArray);
+                break;
+
+            case 0x1b:
+            case 0x2f:
+                smsAddrConfig = GetIdConfig(destinationArray);
+                break;
+
+            case 0x2e:
+            case 0x31:
+                smsAddrConfig = GetDataGps(destinationArray);
+                break;
+
+            case 60:
+            case 80:
+                smsAddrConfig = GetGprsBaseConfig(destinationArray);
+                break;
+
+            case 0x3d:
+            case 0x51:
+                smsAddrConfig = GetGprsEmailConfig(destinationArray);
+                break;
+
+            case 0x3e:
+            case 0x52:
+                smsAddrConfig = GetGprsSocketConfig(destinationArray);
+                break;
+
+            case 0x3f:
+            case 0x53:
+                smsAddrConfig = GetGprsFtpConfig(destinationArray);
+                break;
+
+            case 0x40:
+            case 0x54:
+                smsAddrConfig = GetGprsProviderConfig(destinationArray);
+                break;
+
+            default:
+                //throw new A1Exception(string.Format(
+                //"A1_5. От телетрека получена неизвестная команда с идентификатором: {0}.", num));
         }
-        //40 - Пакет с командой от сервера
-        if ("command".equals(cmd)){
-            result = new byte[2];
-            result[0] = 40;
-            
-            if ("getgps".equals(value.toLowerCase())){
-                //Возврат текущих координат GPS
-                result[1] = 0;
-            }
-            else if ("cpureset".equals(value.toLowerCase())){
-                //Выполняется сохранение системных пераметров и перезагрузка процессора
-                result[1] = 1;
-            }
-            else if ("getver".equals(value.toLowerCase())){
-                //Возвращается версия П/О треккера
-                result[1] = 2;
-            }
-            else if ("deletegpsrecords".equals(value.toLowerCase())){
-                //Стирается информация о записях GPS данных во flash-памяти
-                result[1] = 4;
-            }
-            else if ("getio".equals(value.toLowerCase())){
-                //Получение состояния цифровых входов, цифровых выходов и аналоговых входов
-                result[1] = 6;
-            }
-            else if ("setdigout 1".equals(value.toLowerCase())){
-                //Установить цифровой выход 1
-                result[1] = 7;
-            }
-            else if ("clrdigout 1".equals(value.toLowerCase())){
-                //бросить цифровой выход 1
-                result[1] = 8;
-            }
-            else if ("setdigout 2".equals(value.toLowerCase())){
-                //Установить цифровой выход 2
-                result[1] = 9;
-            }
-            else if ("clrdigout 2".equals(value.toLowerCase())){
-                //сбросить цифровой выход 2
-                result[1] = 10;
-            }
-        }
-        //43 - Командой обновления П/О
-        if ("boot".equals(cmd)){
-            lengthConfig = 2;
-            lengthData = (byte)(value.length() + 1);
-            result = new byte[lengthConfig + lengthData];
-            System.arraycopy(value.getBytes(), 0, result, lengthConfig, lengthData - 1);
-            result[lengthConfig + lengthData] = 0;
-        }        
-        return result;
+        smsAddrConfig.CommandID = (CommandDescriptor) num;
+        smsAddrConfig.MessageID = num2;
+        return smsAddrConfig;
     }
-    
-    /*
-    * Имя команды по номеру
-    */
-    private String getCommndParam(byte cmd){
-        switch (cmd) {
-            case 0:
-                return "getgps";
-            case 1:
-                return "cpureset";
-            case 2:
-                return "getver";
-            case 4:
-                return "deletegpsrecords";
-            case 6:
-                return "getio";
-            case 7:
-                return "setdigout 1";
-            case 8:
-                return "clrdigout 1";
-            case 9:
-                return "setdigout 2";
-            case 10:
-                return "clrdigout 2";
-        }
-        return "none";
-    }
-    /*
-    * Значение команды
-    */
-    private String getCommandValue(ChannelBuffer buf, byte cmd, short length){
-        String result="";
-        switch (cmd) {
-            case 0:
-                /*Смещение  Размер в байтах Назначение  
-0   1   Валидность данных: 0 – данные невалидны 1 – данные валидны
-1   1   Кол-во спутников
-2   4   Широта
-6   4   Долгота
-10  2   Высота
-12  1   Скорость
-13  2   Азимут
-15  8   Время UTC
-*/
-                //return "getgps";
-                break;
-            case 1:
-                //return "cpureset";
-                break;
-            case 2:
-                result = buf.toString(buf.readerIndex(), length-1, Charset.defaultCharset());
-                buf.skipBytes(length);
-                //return "getver";
-                break;
-            case 4:
-                short r = buf.readUnsignedByte();
-                result = (r==255 ? "ok" : "error");
-                //0 – неуспешно 255 – успешно
-                //return "deletegpsrecords";
-                break;
-            case 6: //Получение состояния цифровых входов, цифровых выходов и аналоговых входов
-                /*
-Смещение    Размер в байтах Назначение
-0   2   Битовая маска состояния цифровых входов:
-            Бит 0 – dLow1 
-            Бит 1 – dLow2
-            Бит 2 – dLow3
-            Бит 3 – dLow4 
-            Бит 4 – dHigh1
-            Бит 5 – dHigh2 
-            Бит 6 – dIOpen 
-            Бит 7 – dIRst
-2   1   Битовая маска состояния цифровых выходов:
-            Бит 0 – Dout1 
-            Бит 1 – Dout2
-3   2   Аналоговый вход 1, mV
-5   2   Аналоговый вход 2, mV
-7   2   Напряжение внешнего источника питания, mV
-9   2   Напряжение батареи, mV
-                */
-                //return "getio";
-                break;
-            case 7:
-                //return "setdigout 1";
-                short setdigout1 = buf.readUnsignedByte();
-                result = setdigout1 + "";
-                break;
-            case 8:
-                //return "clrdigout 1";
-                short clrdigout1 = buf.readUnsignedByte();
-                result = clrdigout1 + "";
-                break;
-            case 9:
-                //return "setdigout 2";
-                short setdigout2 = buf.readUnsignedByte();
-                result = setdigout2 + "";
-                break;
-            case 10:
-                //return "clrdigout 2";
-                short clrdigout2 = buf.readUnsignedByte();
-                result = clrdigout2 + "";
-                break;
-        }
-        return result;
-    }
+
 }
