@@ -44,6 +44,29 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
     
     private int BIN_LENGTH = 0x20; //32
     private int ATR_LENGTH = 4;
+    
+    private ChannelBuffer getAck(boolean error){
+        ChannelBuffer response = ChannelBuffers.directBuffer(1);
+        //response.writeByte(0x30); //'0'
+        
+        short r = 0x30; //Признак пакета
+        //Результат обработки запроса.
+        //0b0 – Все ок.
+        //0b1 – Ошибка или отрицательный ответ на запрос.
+        r |= (error ? 8 : 0);    
+        
+        List<DeviceCommand> commands = getDataManager().getCommandsByImei(deviceImei);
+        if(commands != null){
+            //Флаг наличия команд в очереди на сервере.
+            //0b0 – Ничего нет.
+            //0b1 – Очередь не пуста.
+            r |= (commands.size() > 0 ? 4 : 0);
+        }        
+        
+        response.writeByte(r);
+        
+        return response;
+    }
 
     private void parseIdentification(Channel channel, ChannelBuffer buf) {
         boolean result = false;
@@ -73,10 +96,11 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         }
         
         if (channel != null) {
-            ChannelBuffer response = ChannelBuffers.directBuffer(1);
+            //ChannelBuffer response = ChannelBuffers.directBuffer(1);
             //response.writeByte(result ? 1 : 0);
-            response.writeByte(0x30); //'0'
-            channel.write(response);
+            //response.writeByte(0x30); //'0'
+            //channel.write(response);
+            channel.write(getAck(false));
             
             sendCommand(channel);
         }
@@ -242,9 +266,10 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         }
         
         if (channel != null) {
-            ChannelBuffer response = ChannelBuffers.directBuffer(1);
-            response.writeByte(48);
-            channel.write(response);
+            //ChannelBuffer response = ChannelBuffers.directBuffer(1);
+            //response.writeByte(48);
+            //channel.write(response);
+            channel.write(getAck(false));
         }
         return positions;
     }
