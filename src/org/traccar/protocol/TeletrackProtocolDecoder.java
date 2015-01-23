@@ -454,7 +454,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         buf.getBytes(0x10, destinationArray, 0, 0x90);
         
         //Level1Converter
-        int num2 = SymbolToValue(destinationArray[2]) << 2;
+        int num2 = L1SymbolToValue(destinationArray[2]) << 2;
         if (num2 != 0x88)
         {
             //throw new A1Exception(string.Format(
@@ -466,9 +466,9 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         //Array.Copy(destinationArray, 0, buffer2, 0, 2);
         System.arraycopy(destinationArray, 0, buffer2, 0, buffer2.length );
         //Level1Converter
-        BytesToString(buffer2);
+        //L1BytesToString(buffer2);
         //Level1Converter
-        short num3 = SymbolToValue(destinationArray[7]);
+        short num3 = L1SymbolToValue(destinationArray[7]);
         //Util
         byte num4 = CalculateLevel1CRC(destinationArray, 0, num2);
         if(num3 != num4){
@@ -482,8 +482,8 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         //Array.Copy(destinationArray, 8, buffer4, 0, 0x88);
         System.arraycopy(destinationArray, 8, buffer4, 0, 0x88);
         
-        //CommonDescription description = DecodeLevel3Message(Decode6BitTo8(buffer4));
-        String ShortID = BytesToString(buffer3);
+        Object description = DecodeLevel3Message(L1Decode6BitTo8(buffer4));
+        String ShortID = L1BytesToString(buffer3);
         //description.Source = message;
         //description.Message = Util.GetStringFromByteArray(message);
 
@@ -619,7 +619,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         return null;
     }
 
-    public static short SymbolToValue(byte symbol) {
+    public static short L1SymbolToValue(byte symbol) {
         byte ASCII_CODE_A = 65; //Convert.ToByte('A');        
         byte num = 0;        
         int symbolCode = symbol & 0xFF;      
@@ -648,14 +648,14 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         return num;
     }
 
-    public static String BytesToString(byte[] source){
+    public static String L1BytesToString(byte[] source){
         if (source == null){
             //throw new ArgumentNullException("source", "Не передан массив байт source");
             return "";
         }
         StringBuilder builder = new StringBuilder();
         for (int i = 0; i < source.length; i++){
-            builder.append((char) SymbolToValue(source[i]));
+            builder.append((char) L1SymbolToValue(source[i]));
         }
         return builder.toString();
     }
@@ -688,7 +688,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         return (byte) num2;
     }
 
-    private static byte[] Decode6BitTo8(byte[] dataBlock){
+    private static byte[] L1Decode6BitTo8(byte[] dataBlock){
         if (dataBlock == null){
             //throw new ArgumentNullException("dataBlock", "Не передан массив байт dataBlock");
             return null;
@@ -701,10 +701,10 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         int num = 0x22;
         for (int i = 0; i < num; i++){
             int index = 4 * i;
-            short num6 = SymbolToValue(dataBlock[index]);
-            short num7 = SymbolToValue(dataBlock[index + 1]);
-            short num8 = SymbolToValue(dataBlock[index + 2]);
-            short num9 = SymbolToValue(dataBlock[index + 3]);
+            short num6 = L1SymbolToValue(dataBlock[index]);
+            short num7 = L1SymbolToValue(dataBlock[index + 1]);
+            short num8 = L1SymbolToValue(dataBlock[index + 2]);
+            short num9 = L1SymbolToValue(dataBlock[index + 3]);
             byte num3 = (byte) (num6 << 2);
             byte num4 = (byte) (num7 << 2);
             byte num5 = (byte) (num8 << 2);
@@ -728,83 +728,211 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
     * Обработка сообщения на 3-ем уровне LEVEL3 
     * Parameters command byte[102] Пакет команды LEVEL3
     */
-    private CommonDescription DecodeLevel3Message(byte[] command){
-        CommonDescription smsAddrConfig;
+        private Object DecodeLevel3Message(byte[] command){
+        Object result = null;
         if (command.length != 0x66){
             //throw new A1Exception(string.Format(
             //"A1_1. Длина пакета на уровне {0} не соответствует требованиям протокола. Ожидалось {1} байт, принято - {2}.", "LEVEL3", (byte) 0x66, command.Length));
         }
-        byte num = command[0];
-        ushort num2 = Level4Converter.BytesToUShort(command, 1);
+        byte commandID = command[0];
+        //Level4Converter.
+        int messageID = L4ToInt16(command, 1); //BytesToUShort(command, 1);
         byte[] destinationArray = new byte[0x63];
-        Array.Copy(command, 3, destinationArray, 0, 0x63);
-        switch (num){
+        //Array.Copy(command, 3, destinationArray, 0, 0x63);
+        System.arraycopy(command, 3, destinationArray, 0, 0x63);
+        
+        
+        switch (commandID){
             case 0x15:
             case 0x29:
-                smsAddrConfig = GetSmsAddrConfig(destinationArray);
+                //smsAddrConfig = GetSmsAddrConfig(destinationArray);
                 break;
 
             case 0x16:
             case 0x2a:
-                smsAddrConfig = GetPhoneNumberConfig(destinationArray);
+                //smsAddrConfig = GetPhoneNumberConfig(destinationArray);
                 break;
-
-            case 0x17:
-            case 0x2b:
-                smsAddrConfig = GetEventConfig(destinationArray);
+            case 0x0D://13: //EventConfigSet
+            case 0x17: //EventConfigConfirm ,
+            //EventConfigQuery = 0x21,
+            case 0x2b: //EventConfigAnswer
+                result = GetEventConfig(destinationArray);
                 break;
 
             case 0x18:
             case 0x2c:
-                smsAddrConfig = GetUniqueConfig(destinationArray);
+                //smsAddrConfig = GetUniqueConfig(destinationArray);
                 break;
 
             case 0x19:
-                smsAddrConfig = GetZoneConfigConfirm(destinationArray);
+                //smsAddrConfig = GetZoneConfigConfirm(destinationArray);
                 break;
 
             case 0x1b:
             case 0x2f:
-                smsAddrConfig = GetIdConfig(destinationArray);
+                result = GetIdConfig(destinationArray);                
                 break;
 
             case 0x2e:
             case 0x31:
-                smsAddrConfig = GetDataGps(destinationArray);
+                //smsAddrConfig = GetDataGps(destinationArray);
                 break;
 
             case 60:
             case 80:
-                smsAddrConfig = GetGprsBaseConfig(destinationArray);
+                //smsAddrConfig = GetGprsBaseConfig(destinationArray);
                 break;
 
             case 0x3d:
             case 0x51:
-                smsAddrConfig = GetGprsEmailConfig(destinationArray);
+                //smsAddrConfig = GetGprsEmailConfig(destinationArray);
                 break;
 
             case 0x3e:
             case 0x52:
-                smsAddrConfig = GetGprsSocketConfig(destinationArray);
+                //smsAddrConfig = GetGprsSocketConfig(destinationArray);
                 break;
 
             case 0x3f:
             case 0x53:
-                smsAddrConfig = GetGprsFtpConfig(destinationArray);
+                //smsAddrConfig = GetGprsFtpConfig(destinationArray);
                 break;
 
             case 0x40:
             case 0x54:
-                smsAddrConfig = GetGprsProviderConfig(destinationArray);
+                //smsAddrConfig = GetGprsProviderConfig(destinationArray);
                 break;
 
             default:
+                result = null;
                 //throw new A1Exception(string.Format(
                 //"A1_5. От телетрека получена неизвестная команда с идентификатором: {0}.", num));
         }
-        smsAddrConfig.CommandID = (CommandDescriptor) num;
-        smsAddrConfig.MessageID = num2;
-        return smsAddrConfig;
+        
+        //smsAddrConfig.CommandID = (CommandDescriptor) commandID;
+        //smsAddrConfig.MessageID = messageID;
+        return result;
     }
+    
+        //public static ushort BytesToUShort(byte[] source, int startIndex){
+        //return (ushort) ToInt16(source, startIndex);
+    //}
+    /*
+    * Level4 Преобразование массива байт в short - ushort. Значение представлено как int32.
+    * Parameters
+    * source byte[] длина больше или равна 1
+    * startIndex Индекс начиная с которого будет производиться преобразование
+    * Return Value Int
+    */
+    private int L4ToInt16(byte[] source, int startIndex){
+        if (source == null){
+            //throw new ArgumentNullException("source", "Не передан массив байт source");
+        }
+        if (source.length == 0){
+            //throw new ArgumentException("source", "Передан пустой массив байт source");
+        }
+        if ((startIndex < 0) || (startIndex >= source.length)){
+            //throw new ArgumentOutOfRangeException("startIndex", "startIndex должен быть больше или равен нулю и меньше длины массива source");
+        }
+        int num = 0;
+        int num2 = 0;
+        if ((startIndex + 1) < source.length){
+            num = source[startIndex] & 0xFF;
+            num2 = source[startIndex + 1] & 0xFF;
+        }
+        else {
+            num2 = source[startIndex] & 0xFF;
+        }
+        return ((num << 8) | num2);
+    }
+
+    /*
+    *екодирование сообщения кофигурации событий 13, 23, 43 
+    */
+    private DeviceCommand GetEventConfig(byte[] command){
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+        DeviceCommand config = new DeviceCommand();
+        config.setDeviceId(deviceId);
+        config.setImei(deviceImei);
+        
+        //extendedInfo.set("codec", codec);
+        extendedInfo.set("SpeedChange", command[0] & 0xFF);        
+        extendedInfo.set("CourseBend", L4ToInt16(command, 1));
+        extendedInfo.set("Distance1", L4ToInt16(command, 3));
+        extendedInfo.set("Distance2", L4ToInt16(command, 5));
+        
+        
+        //for (int i = 0; i < 0x20; i++)
+        //{
+        //    config.EventMask[i] = Level4Converter.BytesToUShort(command, (i << 1) + 7);
+        //}
+        
+        extendedInfo.set("MinSpeed", L4ToInt16(command, 0x47));
+        extendedInfo.set("Timer1", L4ToInt16(command, 0x49));
+        extendedInfo.set("Timer2", L4ToInt16(command, 0x4b));
+        
+        config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+        return config;
+    }
+
+    private DeviceCommand GetIdConfig(byte[] command) {
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+        DeviceCommand config = new DeviceCommand();
+        config.setDeviceId(deviceId);
+        config.setImei(deviceImei);
+        
+        //return new IdConfig { 
+        //DevIdShort = Level4Converter.BytesToString(command, 0, 4), 
+        extendedInfo.set("DevIdShort", L4BytesToString(command,0, 4));
+        //DevIdLong = Level4Converter.BytesToString(command, 4, 0x10), 
+        //ModuleIdGps = Level4Converter.BytesToString(command, 20, 4), 
+        //ModuleIdGsm = Level4Converter.BytesToString(command, 0x18, 4), 
+        //ModuleIdRf = Level4Converter.BytesToString(command, 0x20, 4), 
+        //ModuleIdSs = Level4Converter.BytesToString(command, 0x24, 4), 
+        //VerProtocolLong = Level4Converter.BytesToString(command, 40, 0x10), 
+        //VerProtocolShort = Level4Converter.BytesToString(command, 0x38, 2) };
+        
+        config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+        return config;
+    }
+
+    public String L4BytesToString(byte[] source, int startIndex, int length){
+        if (source == null)    {
+            return ""; //throw new ArgumentNullException("source", "Не передан массив байт source");
+        }
+        if ((startIndex < 0) || (startIndex >= source.length)){
+            return ""; //throw new ArgumentOutOfRangeException("startIndex", "Для параметра startIndex должны выполняться условия: (startIndex >= 0) && (startIndex < source.Length)");
+        }
+        int num = startIndex + length;
+        if ((length <= 0) || (num >= source.length)){
+            return "";
+            //throw new ArgumentOutOfRangeException("length", "Для параметра length должны выполняться условия: (length > 0) && (startIndex + length < source.Length)");
+        }
+        StringBuilder builder = new StringBuilder();
+        for (int i = startIndex; i < num; i++){
+            char ch = ConvertAsciiWin1251ToChar(source[i]);
+            if (((byte) ch) == 0){
+                break;
+            }
+            builder.append(ch);
+        }
+        return builder.toString();
+    }
+
+    public char ConvertAsciiWin1251ToChar(byte code){
+        if (code < 0xc0){
+            switch ((int)code){
+                case 0xa8:
+                    return 'Ё';
+
+                case 0xb8:
+                    return 'ё';
+            }
+            return (char)code; //Convert.ToChar(code);
+        }
+        return /*Convert.ToChar*/(char)((int) ((code + 0x410) - 0xc0));
+    }
+
+
 
 }
