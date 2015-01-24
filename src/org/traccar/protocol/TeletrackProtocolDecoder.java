@@ -705,18 +705,18 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
             short num7 = L1SymbolToValue(dataBlock[index + 1]);
             short num8 = L1SymbolToValue(dataBlock[index + 2]);
             short num9 = L1SymbolToValue(dataBlock[index + 3]);
-            byte num3 = (byte) (num6 << 2);
-            byte num4 = (byte) (num7 << 2);
-            byte num5 = (byte) (num8 << 2);
-            byte num10 = (byte) (num9 << 6);
-            num10 = (byte) (num10 >> 6);
-            byte num11 = (byte) (num9 << 4);
-            num11 = (byte) (num11 >> 6);
-            byte num12 = (byte) (num9 << 2);
-            num12 = (byte) (num12 >> 6);
-            num3 = (byte) (num3 + num10);
-            num4 = (byte) (num4 + num11);
-            num5 = (byte) (num5 + num12);
+            short num3 = (short) ((num6 << 2) & 0xFF);
+            short num4 = (short) ((num7 << 2) & 0xFF);
+            short num5 = (short) ((num8 << 2) & 0xFF);
+            short num10 = (short) ((num9 << 6) & 0xFF);
+            num10 = (short) ((num10 >> 6) & 0xFF);
+            short num11 = (short) ((num9 << 4) & 0xFF);
+            num11 = (short) ((num11 >> 6) & 0xFF);
+            short num12 = (short) ((num9 << 2) & 0xFF);
+            num12 = (short) ((num12 >> 6) & 0xFF);
+            num3 = (short) (num3 + num10);
+            num4 = (short) (num4 + num11);
+            num5 = (short) (num5 + num12);
             buffer[i * 3] = (byte) (num3 & 0xff);
             buffer[(i * 3) + 1] = (byte) (num4 & 0xff);
             buffer[(i * 3) + 2] = (byte) (num5 & 0xff);
@@ -728,7 +728,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
     * Обработка сообщения на 3-ем уровне LEVEL3 
     * Parameters command byte[102] Пакет команды LEVEL3
     */
-        private Object DecodeLevel3Message(byte[] command){
+    private Object DecodeLevel3Message(byte[] command){
         Object result = null;
         if (command.length != 0x66){
             //throw new A1Exception(string.Format(
@@ -756,7 +756,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
             case 0x17: //EventConfigConfirm ,
             //EventConfigQuery = 0x21,
             case 0x2b: //EventConfigAnswer
-                result = GetEventConfig(destinationArray);
+                result = GetEventConfig(destinationArray, commandID);
                 break;
 
             case 0x18:
@@ -770,7 +770,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
 
             case 0x1b:
             case 0x2f:
-                result = GetIdConfig(destinationArray);                
+                result = GetIdConfig(destinationArray, commandID);                
                 break;
 
             case 0x2e:
@@ -814,11 +814,11 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         return result;
     }
     
-        //public static ushort BytesToUShort(byte[] source, int startIndex){
+    //public static ushort BytesToUShort(byte[] source, int startIndex){
         //return (ushort) ToInt16(source, startIndex);
     //}
     /*
-    * Level4 Преобразование массива байт в short - ushort. Значение представлено как int32.
+    * Level4 BytesToUShort Преобразование массива байт в short - ushort. Значение представлено как int32.
     * Parameters
     * source byte[] длина больше или равна 1
     * startIndex Индекс начиная с которого будет производиться преобразование
@@ -847,13 +847,16 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
     }
 
     /*
-    *екодирование сообщения кофигурации событий 13, 23, 43 
+    * Декодирование сообщения кофигурации событий 13, 23, 43 
     */
-    private DeviceCommand GetEventConfig(byte[] command){
+    private DeviceCommand GetEventConfig(byte[] command, byte cmd){
         ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
         DeviceCommand config = new DeviceCommand();
         config.setDeviceId(deviceId);
         config.setImei(deviceImei);
+        
+        extendedInfo.set("command", cmd);
+        //extendedInfo.set("commandName", );
         
         //extendedInfo.set("codec", codec);
         extendedInfo.set("SpeedChange", command[0] & 0xFF);        
@@ -862,10 +865,9 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         extendedInfo.set("Distance2", L4ToInt16(command, 5));
         
         
-        //for (int i = 0; i < 0x20; i++)
-        //{
-        //    config.EventMask[i] = Level4Converter.BytesToUShort(command, (i << 1) + 7);
-        //}
+        for (int i = 0; i < 0x20; i++){
+            extendedInfo.set("EventMask"+i, L4ToInt16(command, (i << 1) + 7));
+        }
         
         extendedInfo.set("MinSpeed", L4ToInt16(command, 0x47));
         extendedInfo.set("Timer1", L4ToInt16(command, 0x49));
@@ -875,12 +877,13 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         return config;
     }
 
-    private DeviceCommand GetIdConfig(byte[] command) {
+    private DeviceCommand GetIdConfig(byte[] command, byte cmd) {
         ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
         DeviceCommand config = new DeviceCommand();
         config.setDeviceId(deviceId);
         config.setImei(deviceImei);
         
+        extendedInfo.set("command", cmd);
         //return new IdConfig { 
         //DevIdShort = Level4Converter.BytesToString(command, 0, 4), 
         extendedInfo.set("DevIdShort", L4BytesToString(command,0, 4));
