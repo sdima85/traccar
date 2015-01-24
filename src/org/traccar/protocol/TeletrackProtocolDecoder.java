@@ -724,6 +724,16 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         return buffer;
     }
     
+    public boolean IsBitSetInMask(int mask, byte bitIndex){
+        int num = (((int) 1) << bitIndex);
+        if ((num & mask) == 0){
+            return false;
+        }
+        return true;
+    }
+
+
+    
     /*
     * Обработка сообщения на 3-ем уровне LEVEL3 
     * Parameters command byte[102] Пакет команды LEVEL3
@@ -1233,7 +1243,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
     
     private List<Position> GetDataGps(byte[] command, byte cmd) {
             //DataGpsAnswer answer = new DataGpsAnswer();
-        List<Position> positions = new List<Position>();
+        List<Position> positions = new LinkedList<Position>();
         short startIndex = 0;
         int WhatWrite = L4ToInt16(command, startIndex);
         startIndex = (short) (startIndex + 2);
@@ -1249,43 +1259,43 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
             position.setDeviceId(deviceId);
             position.setTableName(tableName);
             position.setImei(deviceImei);
-            if (Util.IsBitSetInMask(answer.WhatWrite, 0)){
+            if (IsBitSetInMask(WhatWrite, (byte)0)){
                 data.Time = Level4Converter.BytesToInt(command, startIndex);
                 startIndex = (short) (startIndex + 4);
             }
-            if (Util.IsBitSetInMask(answer.WhatWrite, 1)){
+            if (IsBitSetInMask(WhatWrite, (byte)1)){
                 data.Latitude = Level4Converter.BytesToInt(command, startIndex) * 10;
                 startIndex = (short) (startIndex + 4);
             }
-            if (Util.IsBitSetInMask(answer.WhatWrite, 2)){
+            if (IsBitSetInMask(WhatWrite, (byte)2)){
                 data.Longitude = Level4Converter.BytesToInt(command, startIndex) * 10;
                 startIndex = (short) (startIndex + 4);
             }
-            if (Util.IsBitSetInMask(answer.WhatWrite, 3)){
+            if (IsBitSetInMask(WhatWrite, (byte)3)){
                 data.Altitude = command[startIndex];
                 startIndex = (short) (startIndex + 1);
             }
-            if (Util.IsBitSetInMask(answer.WhatWrite, 4)){
+            if (IsBitSetInMask(WhatWrite, (byte)4)){
                 position.setCourse(command[startIndex]);
                 startIndex = (short) (startIndex + 1);
             }
-            if (Util.IsBitSetInMask(answer.WhatWrite, 5)){
+            if (IsBitSetInMask(WhatWrite, (byte) 5)){
                 data.Speed = command[startIndex];
                 startIndex = (short) (startIndex + 1);
             }
-            if (Util.IsBitSetInMask(answer.WhatWrite, 6)){
+            if (IsBitSetInMask(WhatWrite, (byte) 6)){
                 data.LogID = Level4Converter.BytesToInt(command, startIndex);
                 startIndex = (short) (startIndex + 4);
             }
-            if (Util.IsBitSetInMask(answer.WhatWrite, 7)){
+            if (IsBitSetInMask(WhatWrite, (byte) 7)){
                 data.Flags = command[startIndex];
                 startIndex = (short) (startIndex + 1);
             }
-            if (Util.IsBitSetInMask(answer.WhatWrite, 8)){
+            if (IsBitSetInMask(WhatWrite, (byte) 8)){
                 data.Events = Level4Converter.BytesToUInt(command, startIndex);
                 startIndex = (short) (startIndex + 4);
             }
-            if (Util.IsBitSetInMask(answer.WhatWrite, 9)){
+            if (IsBitSetInMask(WhatWrite, (byte) 9)){
                 data.Sensor1 = command[startIndex];
                 startIndex = (short) (startIndex + 1);
                 data.Sensor2 = command[startIndex];
@@ -1303,7 +1313,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
                 data.Sensor8 = command[startIndex];
                 startIndex = (short) (startIndex + 1);
             }
-            if (Util.IsBitSetInMask(answer.WhatWrite, 10)){
+            if (IsBitSetInMask(WhatWrite, (byte)10)){
                 data.Counter1 = Level4Converter.BytesToUShort(command, startIndex);
                 startIndex = (short) (startIndex + 2);
                 data.Counter2 = Level4Converter.BytesToUShort(command, startIndex);
