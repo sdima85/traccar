@@ -1131,8 +1131,8 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         //return new GprsSocketConfig { 
         //Server = Level4Converter.BytesToString(command, 0, 20), 
         extendedInfo.set("Server", L4BytesToString(command, 0, 20));
-        Port = Level4Converter.BytesToUShort(command, 20) };
-        
+        //Port = Level4Converter.BytesToUShort(command, 20) };
+        extendedInfo.set("Port", L4ToInt16(command, 20));
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;  
@@ -1229,105 +1229,99 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         return config; 
     }
         
-/*
+
     
-private static DataGpsAnswer GetDataGps(byte[] command)
-        {
-            DataGpsAnswer answer = new DataGpsAnswer();
-            short startIndex = 0;
-            answer.WhatWrite = Level4Converter.BytesToUShort(command, startIndex);
-            startIndex = (short) (startIndex + 2);
-            byte num2 = command[startIndex];
-            startIndex = (short) (startIndex + 1);
-            for (int i = 0; i < num2; i++)
-            {
-                DataGps data = new DataGps();
-                if (Util.IsBitSetInMask(answer.WhatWrite, 0))
-                {
-                    data.Time = Level4Converter.BytesToInt(command, startIndex);
-                    startIndex = (short) (startIndex + 4);
-                }
-                if (Util.IsBitSetInMask(answer.WhatWrite, 1))
-                {
-                    data.Latitude = Level4Converter.BytesToInt(command, startIndex) * 10;
-                    startIndex = (short) (startIndex + 4);
-                }
-                if (Util.IsBitSetInMask(answer.WhatWrite, 2))
-                {
-                    data.Longitude = Level4Converter.BytesToInt(command, startIndex) * 10;
-                    startIndex = (short) (startIndex + 4);
-                }
-                if (Util.IsBitSetInMask(answer.WhatWrite, 3))
-                {
-                    data.Altitude = command[startIndex];
-                    startIndex = (short) (startIndex + 1);
-                }
-                if (Util.IsBitSetInMask(answer.WhatWrite, 4))
-                {
-                    data.Direction = command[startIndex];
-                    startIndex = (short) (startIndex + 1);
-                }
-                if (Util.IsBitSetInMask(answer.WhatWrite, 5))
-                {
-                    data.Speed = command[startIndex];
-                    startIndex = (short) (startIndex + 1);
-                }
-                if (Util.IsBitSetInMask(answer.WhatWrite, 6))
-                {
-                    data.LogID = Level4Converter.BytesToInt(command, startIndex);
-                    startIndex = (short) (startIndex + 4);
-                }
-                if (Util.IsBitSetInMask(answer.WhatWrite, 7))
-                {
-                    data.Flags = command[startIndex];
-                    startIndex = (short) (startIndex + 1);
-                }
-                if (Util.IsBitSetInMask(answer.WhatWrite, 8))
-                {
-                    data.Events = Level4Converter.BytesToUInt(command, startIndex);
-                    startIndex = (short) (startIndex + 4);
-                }
-                if (Util.IsBitSetInMask(answer.WhatWrite, 9))
-                {
-                    data.Sensor1 = command[startIndex];
-                    startIndex = (short) (startIndex + 1);
-                    data.Sensor2 = command[startIndex];
-                    startIndex = (short) (startIndex + 1);
-                    data.Sensor3 = command[startIndex];
-                    startIndex = (short) (startIndex + 1);
-                    data.Sensor4 = command[startIndex];
-                    startIndex = (short) (startIndex + 1);
-                    data.Sensor5 = command[startIndex];
-                    startIndex = (short) (startIndex + 1);
-                    data.Sensor6 = command[startIndex];
-                    startIndex = (short) (startIndex + 1);
-                    data.Sensor7 = command[startIndex];
-                    startIndex = (short) (startIndex + 1);
-                    data.Sensor8 = command[startIndex];
-                    startIndex = (short) (startIndex + 1);
-                }
-                if (Util.IsBitSetInMask(answer.WhatWrite, 10))
-                {
-                    data.Counter1 = Level4Converter.BytesToUShort(command, startIndex);
-                    startIndex = (short) (startIndex + 2);
-                    data.Counter2 = Level4Converter.BytesToUShort(command, startIndex);
-                    startIndex = (short) (startIndex + 2);
-                    data.Counter3 = Level4Converter.BytesToUShort(command, startIndex);
-                    startIndex = (short) (startIndex + 2);
-                    data.Counter4 = Level4Converter.BytesToUShort(command, startIndex);
-                    startIndex = (short) (startIndex + 2);
-                }
-                if ((Math.Abs(data.Longitude) > 0x66ff300) || (Math.Abs(data.Latitude) > 0x337f980))
-                {
-                    data.Valid = false;
-                }
-                else
-                {
-                    data.Valid = (data.Flags & 8) != 0;
-                }
-                answer.Add(data);
+    private List<Position> GetDataGps(byte[] command, byte cmd) {
+            //DataGpsAnswer answer = new DataGpsAnswer();
+        List<Position> positions = new List<Position>();
+        short startIndex = 0;
+        int WhatWrite = L4ToInt16(command, startIndex);
+        startIndex = (short) (startIndex + 2);
+        byte num2 = command[startIndex];
+        startIndex = (short) (startIndex + 1);
+        for (int i = 0; i < num2; i++){
+                //DataGps data = new DataGps();
+            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+            extendedInfo.set("WhatWrite", WhatWrite);
+            extendedInfo.set("command", cmd);
+            
+            Position position = new Position();
+            position.setDeviceId(deviceId);
+            position.setTableName(tableName);
+            position.setImei(deviceImei);
+            if (Util.IsBitSetInMask(answer.WhatWrite, 0)){
+                data.Time = Level4Converter.BytesToInt(command, startIndex);
+                startIndex = (short) (startIndex + 4);
             }
-            return answer;
+            if (Util.IsBitSetInMask(answer.WhatWrite, 1)){
+                data.Latitude = Level4Converter.BytesToInt(command, startIndex) * 10;
+                startIndex = (short) (startIndex + 4);
+            }
+            if (Util.IsBitSetInMask(answer.WhatWrite, 2)){
+                data.Longitude = Level4Converter.BytesToInt(command, startIndex) * 10;
+                startIndex = (short) (startIndex + 4);
+            }
+            if (Util.IsBitSetInMask(answer.WhatWrite, 3)){
+                data.Altitude = command[startIndex];
+                startIndex = (short) (startIndex + 1);
+            }
+            if (Util.IsBitSetInMask(answer.WhatWrite, 4)){
+                position.setCourse(command[startIndex]);
+                startIndex = (short) (startIndex + 1);
+            }
+            if (Util.IsBitSetInMask(answer.WhatWrite, 5)){
+                data.Speed = command[startIndex];
+                startIndex = (short) (startIndex + 1);
+            }
+            if (Util.IsBitSetInMask(answer.WhatWrite, 6)){
+                data.LogID = Level4Converter.BytesToInt(command, startIndex);
+                startIndex = (short) (startIndex + 4);
+            }
+            if (Util.IsBitSetInMask(answer.WhatWrite, 7)){
+                data.Flags = command[startIndex];
+                startIndex = (short) (startIndex + 1);
+            }
+            if (Util.IsBitSetInMask(answer.WhatWrite, 8)){
+                data.Events = Level4Converter.BytesToUInt(command, startIndex);
+                startIndex = (short) (startIndex + 4);
+            }
+            if (Util.IsBitSetInMask(answer.WhatWrite, 9)){
+                data.Sensor1 = command[startIndex];
+                startIndex = (short) (startIndex + 1);
+                data.Sensor2 = command[startIndex];
+                startIndex = (short) (startIndex + 1);
+                data.Sensor3 = command[startIndex];
+                startIndex = (short) (startIndex + 1);
+                data.Sensor4 = command[startIndex];
+                startIndex = (short) (startIndex + 1);
+                data.Sensor5 = command[startIndex];
+                startIndex = (short) (startIndex + 1);
+                data.Sensor6 = command[startIndex];
+                startIndex = (short) (startIndex + 1);
+                data.Sensor7 = command[startIndex];
+                startIndex = (short) (startIndex + 1);
+                data.Sensor8 = command[startIndex];
+                startIndex = (short) (startIndex + 1);
+            }
+            if (Util.IsBitSetInMask(answer.WhatWrite, 10)){
+                data.Counter1 = Level4Converter.BytesToUShort(command, startIndex);
+                startIndex = (short) (startIndex + 2);
+                data.Counter2 = Level4Converter.BytesToUShort(command, startIndex);
+                startIndex = (short) (startIndex + 2);
+                data.Counter3 = Level4Converter.BytesToUShort(command, startIndex);
+                startIndex = (short) (startIndex + 2);
+                data.Counter4 = Level4Converter.BytesToUShort(command, startIndex);
+                startIndex = (short) (startIndex + 2);
+            }
+            if ((Math.Abs(data.Longitude) > 0x66ff300) || (Math.Abs(data.Latitude) > 0x337f980)){
+                data.Valid = false;
+            }
+            else{
+                data.Valid = (data.Flags & 8) != 0;
+            }
+            positions.add(position);
         }
-*/        
+        return positions;
+    }
+        
 }
