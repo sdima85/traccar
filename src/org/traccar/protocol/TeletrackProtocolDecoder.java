@@ -745,12 +745,12 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         switch (commandID){
             case 0x15:
             case 0x29:
-                //smsAddrConfig = GetSmsAddrConfig(destinationArray);
+                result = GetSmsAddrConfig(destinationArray, commandID);
                 break;
 
             case 0x16:
             case 0x2a:
-                //smsAddrConfig = GetPhoneNumberConfig(destinationArray);
+                result = GetPhoneNumberConfig(destinationArray, commandID);
                 break;
             case 0x0D://13: //EventConfigSet
             case 0x17: //EventConfigConfirm ,
@@ -761,11 +761,11 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
 
             case 0x18:
             case 0x2c:
-                //smsAddrConfig = GetUniqueConfig(destinationArray);
+                result = GetUniqueConfig(destinationArray, commandID);
                 break;
 
             case 0x19:
-                //smsAddrConfig = GetZoneConfigConfirm(destinationArray);
+                result = GetZoneConfigConfirm(destinationArray, commandID);
                 break;
 
             case 0x1b:
@@ -775,32 +775,32 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
 
             case 0x2e:
             case 0x31:
-                //smsAddrConfig = GetDataGps(destinationArray);
+                result = GetDataGps(destinationArray, commandID);
                 break;
 
             case 60:
             case 80:
-                //smsAddrConfig = GetGprsBaseConfig(destinationArray);
+                result = GetGprsBaseConfig(destinationArray, commandID);
                 break;
 
             case 0x3d:
             case 0x51:
-                //smsAddrConfig = GetGprsEmailConfig(destinationArray);
+                result = GetGprsEmailConfig(destinationArray, commandID);
                 break;
 
             case 0x3e:
             case 0x52:
-                //smsAddrConfig = GetGprsSocketConfig(destinationArray);
+                result = GetGprsSocketConfig(destinationArray, commandID);
                 break;
 
             case 0x3f:
             case 0x53:
-                //smsAddrConfig = GetGprsFtpConfig(destinationArray);
+                result = GetGprsFtpConfig(destinationArray, commandID);
                 break;
 
             case 0x40:
             case 0x54:
-                //smsAddrConfig = GetGprsProviderConfig(destinationArray);
+                result = GetGprsProviderConfig(destinationArray, commandID);
                 break;
 
             default:
@@ -888,18 +888,25 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         //DevIdShort = Level4Converter.BytesToString(command, 0, 4), 
         extendedInfo.set("DevIdShort", L4BytesToString(command,0, 4));
         //DevIdLong = Level4Converter.BytesToString(command, 4, 0x10), 
+        extendedInfo.set("DevIdLong", L4BytesToString(command,4, 0x10));
         //ModuleIdGps = Level4Converter.BytesToString(command, 20, 4), 
+        extendedInfo.set("ModuleIdGps", L4BytesToString(command, 20, 4));
         //ModuleIdGsm = Level4Converter.BytesToString(command, 0x18, 4), 
+        extendedInfo.set("ModuleIdGsm", L4BytesToString(command, 0x18, 4));
         //ModuleIdRf = Level4Converter.BytesToString(command, 0x20, 4), 
+        extendedInfo.set("ModuleIdRf", L4BytesToString(command, 0x20, 4));
         //ModuleIdSs = Level4Converter.BytesToString(command, 0x24, 4), 
+        extendedInfo.set("ModuleIdSs", L4BytesToString(command, 0x24, 4));
         //VerProtocolLong = Level4Converter.BytesToString(command, 40, 0x10), 
+        extendedInfo.set("VerProtocolLong", L4BytesToString(command, 40, 0x10));
         //VerProtocolShort = Level4Converter.BytesToString(command, 0x38, 2) };
+        extendedInfo.set("VerProtocolShort", L4BytesToString(command, 0x38, 2));
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;
     }
 
-    public String L4BytesToString(byte[] source, int startIndex, int length){
+    private String L4BytesToString(byte[] source, int startIndex, int length){
         if (source == null)    {
             return ""; //throw new ArgumentNullException("source", "Не передан массив байт source");
         }
@@ -921,6 +928,86 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         }
         return builder.toString();
     }
+    
+    private String L4BytesToTelNumber(byte[] source, int startIndex, int length){
+        if (source == null){
+            //throw new ArgumentNullException("source", "Не передан массив байт source");
+        }
+        if ((startIndex < 0) || (startIndex >= source.length)){
+            //throw new ArgumentOutOfRangeException("startIndex", "Для параметра startIndex должны выполняться условия: (startIndex >= 0) && (startIndex < source.Length)");
+        }
+        int num = startIndex + length;
+        if ((length <= 0) || (num >= source.length)){
+            //throw new ArgumentOutOfRangeException("length", "Для параметра length должны выполняться условия: (length > 0) && (startIndex + length < source.Length)");
+        }
+        String str = "";
+        for (int i = startIndex << 1; i < (num << 1); i++)
+        {
+            byte phoneNumberSymbol = L4GetPhoneNumberSymbol(source, i);
+            if (phoneNumberSymbol >= 13){
+                return str;
+            }
+            switch (phoneNumberSymbol){
+                case 10:
+                    str = str + "+";
+                    break;
+
+                case 11:
+                    str = str + "*";
+                    break;
+
+                case 12:
+                    str = str + "#";
+                    break;
+
+                default:
+                    str = str + phoneNumberSymbol;//.toString();
+                    break;
+            }
+        }
+        return str;
+    }
+
+    private byte L4GetPhoneNumberSymbol(byte[] source, int index){
+        if ((source == null) || (source.length == 0)) {
+            //throw new ArgumentNullException("source", "Не передан массив байт source");
+        }
+        if ((index < 0) || (index >= (source.length << 1))) {
+            //throw new ArgumentOutOfRangeException("index", "Для параметра index должны выполняться условия: (index >= 0) && (index < source.Length)");
+        }
+        if ((index & 1) != 0){
+            return (byte) (source[index >> 1] & 15);
+        }
+        return (byte) (source[index >> 1] >> 4);
+    }
+
+    private int L4BytesToInt(byte[] source, int startIndex){
+        //return (int) ToInt32(source, startIndex);
+        if (source == null){
+            //throw new ArgumentNullException("source", "Не передан массив байт source");
+        }
+        if (source.length == 0){
+            //throw new ArgumentException("source", "Передан пустой массив байт source");
+        }
+        if ((startIndex < 0) || (startIndex >= source.length)) {
+            //throw new ArgumentOutOfRangeException("startIndex", "startIndex должен быть больше или равен нулю и меньше длины массива source");
+        }
+        int num = 0;
+        int num2 = 0;
+        if ((startIndex + 2) < source.length){
+            num = L4ToInt16(source, startIndex);
+            num2 = L4ToInt16(source, startIndex + 2);
+        }
+        else {
+            num2 = source[startIndex];
+        }
+        ///(long) 
+        return ((num << 0x10) | (num2 & 0xffff));
+
+    }
+
+
+
 
     public char ConvertAsciiWin1251ToChar(byte code){
         if (code < 0xc0){
@@ -936,6 +1023,311 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         return /*Convert.ToChar*/(char)((int) ((code + 0x410) - 0xc0));
     }
 
+    
+    private DeviceCommand GetGprsBaseConfig(byte[] command, byte cmd){
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+        DeviceCommand config = new DeviceCommand();
+        config.setDeviceId(deviceId);
+        config.setImei(deviceImei);
+        
+        extendedInfo.set("command", cmd);
+        
+        //return new GprsBaseConfig { 
+        //    Mode = Level4Converter.BytesToUShort(command, 0), 
+        extendedInfo.set("Mode", L4ToInt16(command, 0));
+        //    ApnServer = Level4Converter.BytesToString(command, 2, 0x19), 
+        extendedInfo.set("ApnServer", L4BytesToString(command, 2, 0x19));
+        //    ApnLogin = Level4Converter.BytesToString(command, 0x1b, 10), 
+        extendedInfo.set("ApnLogin", L4BytesToString(command, 0x1b, 10));
+        //    ApnPassword = Level4Converter.BytesToString(command, 0x25, 10), 
+        extendedInfo.set("ApnPassword", L4BytesToString(command, 0x25, 1));
+        //    DnsServer = Level4Converter.BytesToString(command, 0x2f, 0x10),
+        extendedInfo.set("DnsServer", L4BytesToString(command, 0x2f, 0x10));
+        //    DialNumber = Level4Converter.BytesToString(command, 0x3f, 11), 
+        extendedInfo.set("DialNumber", L4BytesToString(command, 0x3f, 11));
+        //    GprsLogin = Level4Converter.BytesToString(command, 0x4a, 10), 
+        extendedInfo.set("GprsLogin", L4BytesToString(command, 0x4a, 10));
+        //    GprsPassword = Level4Converter.BytesToString(command, 0x54, 10) 
+        extendedInfo.set("GprsPassword", L4BytesToString(command, 0x54, 10));
+        //};
+        
+        config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+        return config;
+    }
 
+    private DeviceCommand GetGprsEmailConfig(byte[] command, byte cmd){
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+        DeviceCommand config = new DeviceCommand();
+        config.setDeviceId(deviceId);
+        config.setImei(deviceImei);
+        
+        extendedInfo.set("command", cmd);
+        
+        //return new GprsEmailConfig { 
+        //SmtpServer = Level4Converter.BytesToString(command, 0, 0x19), 
+        extendedInfo.set("SmtpServer", L4BytesToString(command, 0, 0x19));
+        //SmtpLogin = Level4Converter.BytesToString(command, 0x19, 10), 
+        extendedInfo.set("SmtpLogin", L4BytesToString(command, 0x19, 10));
+        //SmtpPassword = Level4Converter.BytesToString(command, 0x23, 10), 
+        extendedInfo.set("SmtpPassword", L4BytesToString(command, 0x23, 10));
+        //Pop3Server = Level4Converter.BytesToString(command, 0x2d, 0x19), 
+        extendedInfo.set("Pop3Server", L4BytesToString(command, 0x2d, 0x19));
+        //Pop3Login = Level4Converter.BytesToString(command, 70, 10), 
+        extendedInfo.set("Pop3Login", L4BytesToString(command, 70, 10));
+        //Pop3Password = Level4Converter.BytesToString(command, 80, 10) };
+        extendedInfo.set("Pop3Password", L4BytesToString(command, 80, 10));
+        
+        config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+        return config;   
+    }
 
+    private DeviceCommand GetGprsFtpConfig(byte[] command, byte cmd){
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+        DeviceCommand config = new DeviceCommand();
+        config.setDeviceId(deviceId);
+        config.setImei(deviceImei);
+        
+        extendedInfo.set("command", cmd);
+        //return new GprsFtpConfig { 
+        //Server = Level4Converter.BytesToString(command, 0, 0x19), 
+        extendedInfo.set("Server", L4BytesToString(command, 0, 0x19));
+        //Login = Level4Converter.BytesToString(command, 0x19, 10), 
+        extendedInfo.set("Login", L4BytesToString(command, 0x19, 10));
+        //Password = Level4Converter.BytesToString(command, 0x23, 10), 
+        extendedInfo.set("Password", L4BytesToString(command, 0x23, 10));
+        //ConfigPath = Level4Converter.BytesToString(command, 0x2d, 20), 
+        extendedInfo.set("ConfigPath", L4BytesToString(command, 0x2d, 20));
+        //PutPath = Level4Converter.BytesToString(command, 0x41, 20) };
+        extendedInfo.set("PutPath", L4BytesToString(command, 0x41, 20));
+        
+        config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+        return config;  
+    }
+
+    private DeviceCommand GetGprsProviderConfig(byte[] command, byte cmd) {
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+        DeviceCommand config = new DeviceCommand();
+        config.setDeviceId(deviceId);
+        config.setImei(deviceImei);
+        
+        extendedInfo.set("command", cmd);
+        //return new GprsProviderConfig { 
+        //InitString = Level4Converter.BytesToString(command, 0, 50), 
+        extendedInfo.set("InitString", L4BytesToString(command, 0, 50));
+        //Domain = Level4Converter.BytesToString(command, 50, 0x19) };
+        extendedInfo.set("Domain", L4BytesToString(command, 50, 0x19));
+        
+        config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+        return config; 
+    }
+
+    private DeviceCommand GetGprsSocketConfig(byte[] command, byte cmd){
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+        DeviceCommand config = new DeviceCommand();
+        config.setDeviceId(deviceId);
+        config.setImei(deviceImei);
+        
+        extendedInfo.set("command", cmd);
+        //return new GprsSocketConfig { 
+        //Server = Level4Converter.BytesToString(command, 0, 20), 
+        extendedInfo.set("Server", L4BytesToString(command, 0, 20));
+        Port = Level4Converter.BytesToUShort(command, 20) };
+        
+        
+        config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+        return config;  
+    }
+
+    private DeviceCommand GetPhoneNumberConfig(byte[] command, byte cmd){
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+        DeviceCommand config = new DeviceCommand();
+        config.setDeviceId(deviceId);
+        config.setImei(deviceImei);
+        
+        extendedInfo.set("command", cmd);
+        
+        //return new PhoneNumberConfig { 
+        //NumberAccept1 = Level4Converter.BytesToTelNumber(command, 0, 11),
+        extendedInfo.set("NumberAccept1", L4BytesToTelNumber(command, 0, 11));
+        //NumberAccept2 = Level4Converter.BytesToTelNumber(command, 11, 11), 
+        extendedInfo.set("NumberAccept2", L4BytesToTelNumber(command, 11, 11));
+        //NumberAccept3 = Level4Converter.BytesToTelNumber(command, 0x16, 11), 
+        extendedInfo.set("NumberAccept3", L4BytesToTelNumber(command, 0x16, 11));
+        //NumberDspt = Level4Converter.BytesToTelNumber(command, 0x21, 11), 
+        extendedInfo.set("NumberDspt", L4BytesToTelNumber(command, 0x21, 11));
+        //Name1 = Level4Converter.BytesToString(command, 0x2d, 8), 
+        extendedInfo.set("Name1", L4BytesToString(command, 0x2d, 8));
+        //Name2 = Level4Converter.BytesToString(command, 0x35, 8), 
+        extendedInfo.set("Name2", L4BytesToString(command, 0x35, 8));
+        //Name3 = Level4Converter.BytesToString(command, 0x3d, 8), 
+        extendedInfo.set("Name3", L4BytesToString(command, 0x3d, 8));
+        //NumberSOS = Level4Converter.BytesToTelNumber(command, 0x45, 11) };
+        extendedInfo.set("NumberSOS", L4BytesToTelNumber(command, 0x45, 11));
+            
+        //config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+        return config;  
+    }
+
+    private DeviceCommand GetSmsAddrConfig(byte[] command, byte cmd){
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+        DeviceCommand config = new DeviceCommand();
+        config.setDeviceId(deviceId);
+        config.setImei(deviceImei);
+        
+        extendedInfo.set("command", cmd);
+        //return new SmsAddrConfig { 
+        //DsptEmailGprs = Level4Converter.BytesToString(command, 0, 30), 
+        extendedInfo.set("DsptEmailGprs", L4BytesToString(command, 0, 30));
+        //DsptEmailSMS = Level4Converter.BytesToString(command, 30, 14), 
+        extendedInfo.set("DsptEmailSMS", L4BytesToTelNumber(command, 30, 14));
+        //SmsCentre = Level4Converter.BytesToTelNumber(command, 0x2c, 11), 
+        extendedInfo.set("SmsCentre", L4BytesToTelNumber(command, 0x2c, 11));
+        //SmsDspt = Level4Converter.BytesToTelNumber(command, 0x37, 11), 
+        extendedInfo.set("SmsDspt", L4BytesToTelNumber(command, 0x37, 11));
+        //SmsEmailGate = Level4Converter.BytesToTelNumber(command, 0x42, 11) };
+        extendedInfo.set("SmsEmailGate", L4BytesToTelNumber(command, 0x42, 11));
+            
+        config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+        return config;    
+    }
+
+    private DeviceCommand GetUniqueConfig(byte[] command, byte cmd){
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+        DeviceCommand config = new DeviceCommand();
+        config.setDeviceId(deviceId);
+        config.setImei(deviceImei);
+        
+        extendedInfo.set("command", cmd);
+        //return new UniqueConfig { 
+        //DispatcherID = Level4Converter.BytesToString(command, 0, 4), 
+        extendedInfo.set("DispatcherID", L4BytesToString(command, 0, 4));
+        //Password = Level4Converter.BytesToString(command, 4, 8), 
+        extendedInfo.set("Password", L4BytesToString(command, 4, 8));
+        //TmpPassword = Level4Converter.BytesToString(command, 12, 8) };
+        extendedInfo.set("TmpPassword", L4BytesToString(command, 12, 8));
+        
+        config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+        return config;   
+    }
+
+    private DeviceCommand GetZoneConfigConfirm(byte[] command, byte cmd){
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+        DeviceCommand config = new DeviceCommand();
+        config.setDeviceId(deviceId);
+        config.setImei(deviceImei);
+        
+        extendedInfo.set("command", cmd);        
+        //return new ZoneConfigConfirm { 
+        //ZoneMsgID = Level4Converter.BytesToInt(command, 0), 
+        extendedInfo.set("ZoneMsgID", L4BytesToInt(command, 0));
+        //ZoneState = command[4], 
+        extendedInfo.set("ZoneState", command[4]);
+        //Result = command[5] };
+        extendedInfo.set("Result", command[5]);
+        
+        config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+        return config; 
+    }
+        
+/*
+    
+private static DataGpsAnswer GetDataGps(byte[] command)
+        {
+            DataGpsAnswer answer = new DataGpsAnswer();
+            short startIndex = 0;
+            answer.WhatWrite = Level4Converter.BytesToUShort(command, startIndex);
+            startIndex = (short) (startIndex + 2);
+            byte num2 = command[startIndex];
+            startIndex = (short) (startIndex + 1);
+            for (int i = 0; i < num2; i++)
+            {
+                DataGps data = new DataGps();
+                if (Util.IsBitSetInMask(answer.WhatWrite, 0))
+                {
+                    data.Time = Level4Converter.BytesToInt(command, startIndex);
+                    startIndex = (short) (startIndex + 4);
+                }
+                if (Util.IsBitSetInMask(answer.WhatWrite, 1))
+                {
+                    data.Latitude = Level4Converter.BytesToInt(command, startIndex) * 10;
+                    startIndex = (short) (startIndex + 4);
+                }
+                if (Util.IsBitSetInMask(answer.WhatWrite, 2))
+                {
+                    data.Longitude = Level4Converter.BytesToInt(command, startIndex) * 10;
+                    startIndex = (short) (startIndex + 4);
+                }
+                if (Util.IsBitSetInMask(answer.WhatWrite, 3))
+                {
+                    data.Altitude = command[startIndex];
+                    startIndex = (short) (startIndex + 1);
+                }
+                if (Util.IsBitSetInMask(answer.WhatWrite, 4))
+                {
+                    data.Direction = command[startIndex];
+                    startIndex = (short) (startIndex + 1);
+                }
+                if (Util.IsBitSetInMask(answer.WhatWrite, 5))
+                {
+                    data.Speed = command[startIndex];
+                    startIndex = (short) (startIndex + 1);
+                }
+                if (Util.IsBitSetInMask(answer.WhatWrite, 6))
+                {
+                    data.LogID = Level4Converter.BytesToInt(command, startIndex);
+                    startIndex = (short) (startIndex + 4);
+                }
+                if (Util.IsBitSetInMask(answer.WhatWrite, 7))
+                {
+                    data.Flags = command[startIndex];
+                    startIndex = (short) (startIndex + 1);
+                }
+                if (Util.IsBitSetInMask(answer.WhatWrite, 8))
+                {
+                    data.Events = Level4Converter.BytesToUInt(command, startIndex);
+                    startIndex = (short) (startIndex + 4);
+                }
+                if (Util.IsBitSetInMask(answer.WhatWrite, 9))
+                {
+                    data.Sensor1 = command[startIndex];
+                    startIndex = (short) (startIndex + 1);
+                    data.Sensor2 = command[startIndex];
+                    startIndex = (short) (startIndex + 1);
+                    data.Sensor3 = command[startIndex];
+                    startIndex = (short) (startIndex + 1);
+                    data.Sensor4 = command[startIndex];
+                    startIndex = (short) (startIndex + 1);
+                    data.Sensor5 = command[startIndex];
+                    startIndex = (short) (startIndex + 1);
+                    data.Sensor6 = command[startIndex];
+                    startIndex = (short) (startIndex + 1);
+                    data.Sensor7 = command[startIndex];
+                    startIndex = (short) (startIndex + 1);
+                    data.Sensor8 = command[startIndex];
+                    startIndex = (short) (startIndex + 1);
+                }
+                if (Util.IsBitSetInMask(answer.WhatWrite, 10))
+                {
+                    data.Counter1 = Level4Converter.BytesToUShort(command, startIndex);
+                    startIndex = (short) (startIndex + 2);
+                    data.Counter2 = Level4Converter.BytesToUShort(command, startIndex);
+                    startIndex = (short) (startIndex + 2);
+                    data.Counter3 = Level4Converter.BytesToUShort(command, startIndex);
+                    startIndex = (short) (startIndex + 2);
+                    data.Counter4 = Level4Converter.BytesToUShort(command, startIndex);
+                    startIndex = (short) (startIndex + 2);
+                }
+                if ((Math.Abs(data.Longitude) > 0x66ff300) || (Math.Abs(data.Latitude) > 0x337f980))
+                {
+                    data.Valid = false;
+                }
+                else
+                {
+                    data.Valid = (data.Flags & 8) != 0;
+                }
+                answer.Add(data);
+            }
+            return answer;
+        }
+*/        
 }
