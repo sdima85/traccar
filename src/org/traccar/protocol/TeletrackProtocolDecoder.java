@@ -4,7 +4,6 @@ package org.traccar.protocol;
 
 import java.nio.charset.Charset;
 import java.sql.SQLException;
-import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
@@ -42,11 +41,11 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         packetClear();
     }
     
-    private int BIN_LENGTH = 0x20; //32
-    private int ATR_LENGTH = 4;
+    private final int BIN_LENGTH = 0x20; //32
+    private final int ATR_LENGTH = 4;
     
-    private int A1_ATR_LENGTH = 3;
-    private int A1_EMAIL_SIZE = 13;
+    private final int A1_ATR_LENGTH = 3;
+    private final int A1_EMAIL_SIZE = 13;
     
     private ChannelBuffer getAck(boolean error){
         ChannelBuffer response = ChannelBuffers.directBuffer(1);
@@ -445,7 +444,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         return commands;
     }
     
-    private DeviceCommand parseA1(Channel channel, ChannelBuffer buf){
+    private Object parseA1(Channel channel, ChannelBuffer buf){
         if(!"%%".equals(buf.toString(A1_EMAIL_SIZE+1, 2, Charset.defaultCharset()))){
             // Признак начала пакета расположен не на своем месте в позиции {0}, ожидалось в позиции 14
             return null;
@@ -454,7 +453,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         buf.getBytes(0x10, destinationArray, 0, 0x90);
         
         //Level1Converter
-        int num2 = L1SymbolToValue(destinationArray[2]) << 2;
+        int num2 = TeletrackProtocolA1.L1SymbolToValue(destinationArray[2]) << 2;
         if (num2 != 0x88)
         {
             //throw new A1Exception(string.Format(
@@ -468,9 +467,9 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         //Level1Converter
         //L1BytesToString(buffer2);
         //Level1Converter
-        short num3 = L1SymbolToValue(destinationArray[7]);
+        short num3 = TeletrackProtocolA1.L1SymbolToValue(destinationArray[7]);
         //Util
-        byte num4 = CalculateLevel1CRC(destinationArray, 0, num2);
+        byte num4 = TeletrackProtocolA1.CalculateLevel1CRC(destinationArray, 0, num2);
         if(num3 != num4){
             //throw new A1Exception(string.Format(
             //"A1_4. CRC не совпадает. Значение указанное в пакете {0}, расчитанное - {1}.", num3, num4));
@@ -482,8 +481,8 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         //Array.Copy(destinationArray, 8, buffer4, 0, 0x88);
         System.arraycopy(destinationArray, 8, buffer4, 0, 0x88);
         
-        Object description = DecodeLevel3Message(L1Decode6BitTo8(buffer4));
-        String ShortID = L1BytesToString(buffer3);
+        Object description = DecodeLevel3Message(TeletrackProtocolA1.L1Decode6BitTo8(buffer4));
+        String ShortID = TeletrackProtocolA1.L1BytesToString(buffer3);
         //description.Source = message;
         //description.Message = Util.GetStringFromByteArray(message);
 
@@ -618,135 +617,20 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         }
         return null;
     }
-
-    public static short L1SymbolToValue(byte symbol) {
-        byte ASCII_CODE_A = 65; //Convert.ToByte('A');        
-        byte num = 0;        
-        int symbolCode = symbol & 0xFF;      
-        
-        char ch = (char) (symbolCode & 0xFF); //Convert.ToChar(symbolCode);
-        if ((ch >= 'A') && (ch <= 'Z')){
-            return (byte) (symbolCode - ASCII_CODE_A);
-        }
-        if ((ch >= 'a') && (ch <= 'z')){
-            byte ca = 97;//(byte) str.charAt('a');
-            return (byte) ((symbolCode - ca) + 0x1a);
-        }
-        if ((ch >= '0') && (ch <= '9')){
-            byte c0 = 48;//(byte) .charAt('0');
-            return (byte) ((symbolCode - c0) + 0x34);
-        }
-        if (ch == '+'){
-            return 0x3e;
-        }
-        if (ch == '-'){
-            return 0x3f;
-        }
-        if ((symbolCode >= 0x3a) && (symbolCode <= 0x3f)){
-            num = (byte) ((symbolCode - 0x3a) + ASCII_CODE_A);
-        }
-        return num;
-    }
-
-    public static String L1BytesToString(byte[] source){
-        if (source == null){
-            //throw new ArgumentNullException("source", "Не передан массив байт source");
-            return "";
-        }
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < source.length; i++){
-            builder.append((char) L1SymbolToValue(source[i]));
-        }
-        return builder.toString();
-    }
-
-    private static byte CalculateLevel1CRC(byte[] source, int startIndex, int length){
-        if ((source == null) || (source.length == 0)){
-            //throw new ArgumentNullException("source", "Не передан массив байт source");
-            return 0;
-        }
-        if ((startIndex < 0) || (startIndex >= source.length)){
-            //throw new ArgumentOutOfRangeException(
-            //"startIndex", "Для параметра startIndex должны выполняться условия: (startIndex >= 0) && (startIndex < source.Length)");
-            return 0;
-        }
-        int num = startIndex + length;
-        if ((length <= 0) || (num >= source.length)){
-            //throw new ArgumentOutOfRangeException(
-            //"length", "Для параметра length должны выполняться условия: (length > 0) && (startIndex + length < source.Length)");
-            return 0;
-        }
-        int num2 = 0;
-        for (int i = startIndex; i <= num; i++){
-            if (i != 7){
-                num2 += source[i];
-                num2 &= 0xff;
-            }
-        }
-        num2 = num2 >> 2;
-        num2 &= 0xff;
-        return (byte) num2;
-    }
-
-    private static byte[] L1Decode6BitTo8(byte[] dataBlock){
-        if (dataBlock == null){
-            //throw new ArgumentNullException("dataBlock", "Не передан массив байт dataBlock");
-            return null;
-        }
-        if (dataBlock.length != 0x88){
-            //throw new ArgumentException("dataBlock", string.Concat(new object[] { "Длина переданного массива dataBlock (", dataBlock.Length, ") не соответсвует требуемой длине - ", (byte) 0x88 }));
-            return null;
-        }
-        byte[] buffer = new byte[0x66];
-        int num = 0x22;
-        for (int i = 0; i < num; i++){
-            int index = 4 * i;
-            short num6 = L1SymbolToValue(dataBlock[index]);
-            short num7 = L1SymbolToValue(dataBlock[index + 1]);
-            short num8 = L1SymbolToValue(dataBlock[index + 2]);
-            short num9 = L1SymbolToValue(dataBlock[index + 3]);
-            short num3 = (short) ((num6 << 2) & 0xFF);
-            short num4 = (short) ((num7 << 2) & 0xFF);
-            short num5 = (short) ((num8 << 2) & 0xFF);
-            short num10 = (short) ((num9 << 6) & 0xFF);
-            num10 = (short) ((num10 >> 6) & 0xFF);
-            short num11 = (short) ((num9 << 4) & 0xFF);
-            num11 = (short) ((num11 >> 6) & 0xFF);
-            short num12 = (short) ((num9 << 2) & 0xFF);
-            num12 = (short) ((num12 >> 6) & 0xFF);
-            num3 = (short) (num3 + num10);
-            num4 = (short) (num4 + num11);
-            num5 = (short) (num5 + num12);
-            buffer[i * 3] = (byte) (num3 & 0xff);
-            buffer[(i * 3) + 1] = (byte) (num4 & 0xff);
-            buffer[(i * 3) + 2] = (byte) (num5 & 0xff);
-        }
-        return buffer;
-    }
-    
-    public boolean IsBitSetInMask(int mask, byte bitIndex){
-        int num = (((int) 1) << bitIndex);
-        if ((num & mask) == 0){
-            return false;
-        }
-        return true;
-    }
-
-
-    
+   
     /*
     * Обработка сообщения на 3-ем уровне LEVEL3 
     * Parameters command byte[102] Пакет команды LEVEL3
     */
     private Object DecodeLevel3Message(byte[] command){
-        Object result = null;
+        Object result;
         if (command.length != 0x66){
             //throw new A1Exception(string.Format(
             //"A1_1. Длина пакета на уровне {0} не соответствует требованиям протокола. Ожидалось {1} байт, принято - {2}.", "LEVEL3", (byte) 0x66, command.Length));
         }
         byte commandID = command[0];
         //Level4Converter.
-        int messageID = L4ToInt16(command, 1); //BytesToUShort(command, 1);
+        int messageID = TeletrackProtocolA1.L4ToInt16(command, 1); //BytesToUShort(command, 1);
         byte[] destinationArray = new byte[0x63];
         //Array.Copy(command, 3, destinationArray, 0, 0x63);
         System.arraycopy(command, 3, destinationArray, 0, 0x63);
@@ -824,215 +708,6 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         return result;
     }
     
-    //public static ushort BytesToUShort(byte[] source, int startIndex){
-        //return (ushort) ToInt16(source, startIndex);
-    //}
-    /*
-    * Level4 BytesToUShort Преобразование массива байт в short - ushort. Значение представлено как int32.
-    * Parameters
-    * source byte[] длина больше или равна 1
-    * startIndex Индекс начиная с которого будет производиться преобразование
-    * Return Value Int
-    */
-    private int L4ToInt16(byte[] source, int startIndex){
-        if (source == null){
-            //throw new ArgumentNullException("source", "Не передан массив байт source");
-        }
-        if (source.length == 0){
-            //throw new ArgumentException("source", "Передан пустой массив байт source");
-        }
-        if ((startIndex < 0) || (startIndex >= source.length)){
-            //throw new ArgumentOutOfRangeException("startIndex", "startIndex должен быть больше или равен нулю и меньше длины массива source");
-        }
-        int num = 0;
-        int num2 = 0;
-        if ((startIndex + 1) < source.length){
-            num = source[startIndex] & 0xFF;
-            num2 = source[startIndex + 1] & 0xFF;
-        }
-        else {
-            num2 = source[startIndex] & 0xFF;
-        }
-        return ((num << 8) | num2);
-    }
-
-    /*
-    * Декодирование сообщения кофигурации событий 13, 23, 43 
-    */
-    private DeviceCommand GetEventConfig(byte[] command, byte cmd){
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
-        DeviceCommand config = new DeviceCommand();
-        config.setDeviceId(deviceId);
-        config.setImei(deviceImei);
-        
-        extendedInfo.set("command", cmd);
-        //extendedInfo.set("commandName", );
-        
-        //extendedInfo.set("codec", codec);
-        extendedInfo.set("SpeedChange", command[0] & 0xFF);        
-        extendedInfo.set("CourseBend", L4ToInt16(command, 1));
-        extendedInfo.set("Distance1", L4ToInt16(command, 3));
-        extendedInfo.set("Distance2", L4ToInt16(command, 5));
-        
-        
-        for (int i = 0; i < 0x20; i++){
-            extendedInfo.set("EventMask"+i, L4ToInt16(command, (i << 1) + 7));
-        }
-        
-        extendedInfo.set("MinSpeed", L4ToInt16(command, 0x47));
-        extendedInfo.set("Timer1", L4ToInt16(command, 0x49));
-        extendedInfo.set("Timer2", L4ToInt16(command, 0x4b));
-        
-        config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
-        return config;
-    }
-
-    private DeviceCommand GetIdConfig(byte[] command, byte cmd) {
-        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
-        DeviceCommand config = new DeviceCommand();
-        config.setDeviceId(deviceId);
-        config.setImei(deviceImei);
-        
-        extendedInfo.set("command", cmd);
-        //return new IdConfig { 
-        //DevIdShort = Level4Converter.BytesToString(command, 0, 4), 
-        extendedInfo.set("DevIdShort", L4BytesToString(command,0, 4));
-        //DevIdLong = Level4Converter.BytesToString(command, 4, 0x10), 
-        extendedInfo.set("DevIdLong", L4BytesToString(command,4, 0x10));
-        //ModuleIdGps = Level4Converter.BytesToString(command, 20, 4), 
-        extendedInfo.set("ModuleIdGps", L4BytesToString(command, 20, 4));
-        //ModuleIdGsm = Level4Converter.BytesToString(command, 0x18, 4), 
-        extendedInfo.set("ModuleIdGsm", L4BytesToString(command, 0x18, 4));
-        //ModuleIdRf = Level4Converter.BytesToString(command, 0x20, 4), 
-        extendedInfo.set("ModuleIdRf", L4BytesToString(command, 0x20, 4));
-        //ModuleIdSs = Level4Converter.BytesToString(command, 0x24, 4), 
-        extendedInfo.set("ModuleIdSs", L4BytesToString(command, 0x24, 4));
-        //VerProtocolLong = Level4Converter.BytesToString(command, 40, 0x10), 
-        extendedInfo.set("VerProtocolLong", L4BytesToString(command, 40, 0x10));
-        //VerProtocolShort = Level4Converter.BytesToString(command, 0x38, 2) };
-        extendedInfo.set("VerProtocolShort", L4BytesToString(command, 0x38, 2));
-        
-        config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
-        return config;
-    }
-
-    private String L4BytesToString(byte[] source, int startIndex, int length){
-        if (source == null)    {
-            return ""; //throw new ArgumentNullException("source", "Не передан массив байт source");
-        }
-        if ((startIndex < 0) || (startIndex >= source.length)){
-            return ""; //throw new ArgumentOutOfRangeException("startIndex", "Для параметра startIndex должны выполняться условия: (startIndex >= 0) && (startIndex < source.Length)");
-        }
-        int num = startIndex + length;
-        if ((length <= 0) || (num >= source.length)){
-            return "";
-            //throw new ArgumentOutOfRangeException("length", "Для параметра length должны выполняться условия: (length > 0) && (startIndex + length < source.Length)");
-        }
-        StringBuilder builder = new StringBuilder();
-        for (int i = startIndex; i < num; i++){
-            char ch = ConvertAsciiWin1251ToChar(source[i]);
-            if (((byte) ch) == 0){
-                break;
-            }
-            builder.append(ch);
-        }
-        return builder.toString();
-    }
-    
-    private String L4BytesToTelNumber(byte[] source, int startIndex, int length){
-        if (source == null){
-            //throw new ArgumentNullException("source", "Не передан массив байт source");
-        }
-        if ((startIndex < 0) || (startIndex >= source.length)){
-            //throw new ArgumentOutOfRangeException("startIndex", "Для параметра startIndex должны выполняться условия: (startIndex >= 0) && (startIndex < source.Length)");
-        }
-        int num = startIndex + length;
-        if ((length <= 0) || (num >= source.length)){
-            //throw new ArgumentOutOfRangeException("length", "Для параметра length должны выполняться условия: (length > 0) && (startIndex + length < source.Length)");
-        }
-        String str = "";
-        for (int i = startIndex << 1; i < (num << 1); i++)
-        {
-            byte phoneNumberSymbol = L4GetPhoneNumberSymbol(source, i);
-            if (phoneNumberSymbol >= 13){
-                return str;
-            }
-            switch (phoneNumberSymbol){
-                case 10:
-                    str = str + "+";
-                    break;
-
-                case 11:
-                    str = str + "*";
-                    break;
-
-                case 12:
-                    str = str + "#";
-                    break;
-
-                default:
-                    str = str + phoneNumberSymbol;//.toString();
-                    break;
-            }
-        }
-        return str;
-    }
-
-    private byte L4GetPhoneNumberSymbol(byte[] source, int index){
-        if ((source == null) || (source.length == 0)) {
-            //throw new ArgumentNullException("source", "Не передан массив байт source");
-        }
-        if ((index < 0) || (index >= (source.length << 1))) {
-            //throw new ArgumentOutOfRangeException("index", "Для параметра index должны выполняться условия: (index >= 0) && (index < source.Length)");
-        }
-        if ((index & 1) != 0){
-            return (byte) (source[index >> 1] & 15);
-        }
-        return (byte) (source[index >> 1] >> 4);
-    }
-
-    private int L4BytesToInt(byte[] source, int startIndex){
-        //return (int) ToInt32(source, startIndex);
-        if (source == null){
-            //throw new ArgumentNullException("source", "Не передан массив байт source");
-        }
-        if (source.length == 0){
-            //throw new ArgumentException("source", "Передан пустой массив байт source");
-        }
-        if ((startIndex < 0) || (startIndex >= source.length)) {
-            //throw new ArgumentOutOfRangeException("startIndex", "startIndex должен быть больше или равен нулю и меньше длины массива source");
-        }
-        int num = 0;
-        int num2 = 0;
-        if ((startIndex + 2) < source.length){
-            num = L4ToInt16(source, startIndex);
-            num2 = L4ToInt16(source, startIndex + 2);
-        }
-        else {
-            num2 = source[startIndex];
-        }
-        ///(long) 
-        return ((num << 0x10) | (num2 & 0xffff));
-
-    }
-
-
-
-
-    public char ConvertAsciiWin1251ToChar(byte code){
-        if (code < 0xc0){
-            switch ((int)code){
-                case 0xa8:
-                    return 'Ё';
-
-                case 0xb8:
-                    return 'ё';
-            }
-            return (char)code; //Convert.ToChar(code);
-        }
-        return /*Convert.ToChar*/(char)((int) ((code + 0x410) - 0xc0));
-    }
-
     
     private DeviceCommand GetGprsBaseConfig(byte[] command, byte cmd){
         ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
@@ -1044,21 +719,21 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         
         //return new GprsBaseConfig { 
         //    Mode = Level4Converter.BytesToUShort(command, 0), 
-        extendedInfo.set("Mode", L4ToInt16(command, 0));
+        extendedInfo.set("Mode", TeletrackProtocolA1.L4ToInt16(command, 0));
         //    ApnServer = Level4Converter.BytesToString(command, 2, 0x19), 
-        extendedInfo.set("ApnServer", L4BytesToString(command, 2, 0x19));
+        extendedInfo.set("ApnServer", TeletrackProtocolA1.L4BytesToString(command, 2, 0x19));
         //    ApnLogin = Level4Converter.BytesToString(command, 0x1b, 10), 
-        extendedInfo.set("ApnLogin", L4BytesToString(command, 0x1b, 10));
+        extendedInfo.set("ApnLogin", TeletrackProtocolA1.L4BytesToString(command, 0x1b, 10));
         //    ApnPassword = Level4Converter.BytesToString(command, 0x25, 10), 
-        extendedInfo.set("ApnPassword", L4BytesToString(command, 0x25, 1));
+        extendedInfo.set("ApnPassword", TeletrackProtocolA1.L4BytesToString(command, 0x25, 1));
         //    DnsServer = Level4Converter.BytesToString(command, 0x2f, 0x10),
-        extendedInfo.set("DnsServer", L4BytesToString(command, 0x2f, 0x10));
+        extendedInfo.set("DnsServer", TeletrackProtocolA1.L4BytesToString(command, 0x2f, 0x10));
         //    DialNumber = Level4Converter.BytesToString(command, 0x3f, 11), 
-        extendedInfo.set("DialNumber", L4BytesToString(command, 0x3f, 11));
+        extendedInfo.set("DialNumber", TeletrackProtocolA1.L4BytesToString(command, 0x3f, 11));
         //    GprsLogin = Level4Converter.BytesToString(command, 0x4a, 10), 
-        extendedInfo.set("GprsLogin", L4BytesToString(command, 0x4a, 10));
+        extendedInfo.set("GprsLogin", TeletrackProtocolA1.L4BytesToString(command, 0x4a, 10));
         //    GprsPassword = Level4Converter.BytesToString(command, 0x54, 10) 
-        extendedInfo.set("GprsPassword", L4BytesToString(command, 0x54, 10));
+        extendedInfo.set("GprsPassword", TeletrackProtocolA1.L4BytesToString(command, 0x54, 10));
         //};
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
@@ -1075,17 +750,17 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         
         //return new GprsEmailConfig { 
         //SmtpServer = Level4Converter.BytesToString(command, 0, 0x19), 
-        extendedInfo.set("SmtpServer", L4BytesToString(command, 0, 0x19));
+        extendedInfo.set("SmtpServer", TeletrackProtocolA1.L4BytesToString(command, 0, 0x19));
         //SmtpLogin = Level4Converter.BytesToString(command, 0x19, 10), 
-        extendedInfo.set("SmtpLogin", L4BytesToString(command, 0x19, 10));
+        extendedInfo.set("SmtpLogin", TeletrackProtocolA1.L4BytesToString(command, 0x19, 10));
         //SmtpPassword = Level4Converter.BytesToString(command, 0x23, 10), 
-        extendedInfo.set("SmtpPassword", L4BytesToString(command, 0x23, 10));
+        extendedInfo.set("SmtpPassword", TeletrackProtocolA1.L4BytesToString(command, 0x23, 10));
         //Pop3Server = Level4Converter.BytesToString(command, 0x2d, 0x19), 
-        extendedInfo.set("Pop3Server", L4BytesToString(command, 0x2d, 0x19));
+        extendedInfo.set("Pop3Server", TeletrackProtocolA1.L4BytesToString(command, 0x2d, 0x19));
         //Pop3Login = Level4Converter.BytesToString(command, 70, 10), 
-        extendedInfo.set("Pop3Login", L4BytesToString(command, 70, 10));
+        extendedInfo.set("Pop3Login", TeletrackProtocolA1.L4BytesToString(command, 70, 10));
         //Pop3Password = Level4Converter.BytesToString(command, 80, 10) };
-        extendedInfo.set("Pop3Password", L4BytesToString(command, 80, 10));
+        extendedInfo.set("Pop3Password", TeletrackProtocolA1.L4BytesToString(command, 80, 10));
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;   
@@ -1100,15 +775,15 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         extendedInfo.set("command", cmd);
         //return new GprsFtpConfig { 
         //Server = Level4Converter.BytesToString(command, 0, 0x19), 
-        extendedInfo.set("Server", L4BytesToString(command, 0, 0x19));
+        extendedInfo.set("Server", TeletrackProtocolA1.L4BytesToString(command, 0, 0x19));
         //Login = Level4Converter.BytesToString(command, 0x19, 10), 
-        extendedInfo.set("Login", L4BytesToString(command, 0x19, 10));
+        extendedInfo.set("Login", TeletrackProtocolA1.L4BytesToString(command, 0x19, 10));
         //Password = Level4Converter.BytesToString(command, 0x23, 10), 
-        extendedInfo.set("Password", L4BytesToString(command, 0x23, 10));
+        extendedInfo.set("Password", TeletrackProtocolA1.L4BytesToString(command, 0x23, 10));
         //ConfigPath = Level4Converter.BytesToString(command, 0x2d, 20), 
-        extendedInfo.set("ConfigPath", L4BytesToString(command, 0x2d, 20));
+        extendedInfo.set("ConfigPath", TeletrackProtocolA1.L4BytesToString(command, 0x2d, 20));
         //PutPath = Level4Converter.BytesToString(command, 0x41, 20) };
-        extendedInfo.set("PutPath", L4BytesToString(command, 0x41, 20));
+        extendedInfo.set("PutPath", TeletrackProtocolA1.L4BytesToString(command, 0x41, 20));
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;  
@@ -1123,9 +798,9 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         extendedInfo.set("command", cmd);
         //return new GprsProviderConfig { 
         //InitString = Level4Converter.BytesToString(command, 0, 50), 
-        extendedInfo.set("InitString", L4BytesToString(command, 0, 50));
+        extendedInfo.set("InitString", TeletrackProtocolA1.L4BytesToString(command, 0, 50));
         //Domain = Level4Converter.BytesToString(command, 50, 0x19) };
-        extendedInfo.set("Domain", L4BytesToString(command, 50, 0x19));
+        extendedInfo.set("Domain", TeletrackProtocolA1.L4BytesToString(command, 50, 0x19));
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config; 
@@ -1140,9 +815,9 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         extendedInfo.set("command", cmd);
         //return new GprsSocketConfig { 
         //Server = Level4Converter.BytesToString(command, 0, 20), 
-        extendedInfo.set("Server", L4BytesToString(command, 0, 20));
+        extendedInfo.set("Server", TeletrackProtocolA1.L4BytesToString(command, 0, 20));
         //Port = Level4Converter.BytesToUShort(command, 20) };
-        extendedInfo.set("Port", L4ToInt16(command, 20));
+        extendedInfo.set("Port", TeletrackProtocolA1.L4ToInt16(command, 20));
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;  
@@ -1158,21 +833,21 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         
         //return new PhoneNumberConfig { 
         //NumberAccept1 = Level4Converter.BytesToTelNumber(command, 0, 11),
-        extendedInfo.set("NumberAccept1", L4BytesToTelNumber(command, 0, 11));
+        extendedInfo.set("NumberAccept1", TeletrackProtocolA1.L4BytesToTelNumber(command, 0, 11));
         //NumberAccept2 = Level4Converter.BytesToTelNumber(command, 11, 11), 
-        extendedInfo.set("NumberAccept2", L4BytesToTelNumber(command, 11, 11));
+        extendedInfo.set("NumberAccept2", TeletrackProtocolA1.L4BytesToTelNumber(command, 11, 11));
         //NumberAccept3 = Level4Converter.BytesToTelNumber(command, 0x16, 11), 
-        extendedInfo.set("NumberAccept3", L4BytesToTelNumber(command, 0x16, 11));
+        extendedInfo.set("NumberAccept3", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x16, 11));
         //NumberDspt = Level4Converter.BytesToTelNumber(command, 0x21, 11), 
-        extendedInfo.set("NumberDspt", L4BytesToTelNumber(command, 0x21, 11));
+        extendedInfo.set("NumberDspt", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x21, 11));
         //Name1 = Level4Converter.BytesToString(command, 0x2d, 8), 
-        extendedInfo.set("Name1", L4BytesToString(command, 0x2d, 8));
+        extendedInfo.set("Name1", TeletrackProtocolA1.L4BytesToString(command, 0x2d, 8));
         //Name2 = Level4Converter.BytesToString(command, 0x35, 8), 
-        extendedInfo.set("Name2", L4BytesToString(command, 0x35, 8));
+        extendedInfo.set("Name2", TeletrackProtocolA1.L4BytesToString(command, 0x35, 8));
         //Name3 = Level4Converter.BytesToString(command, 0x3d, 8), 
-        extendedInfo.set("Name3", L4BytesToString(command, 0x3d, 8));
+        extendedInfo.set("Name3", TeletrackProtocolA1.L4BytesToString(command, 0x3d, 8));
         //NumberSOS = Level4Converter.BytesToTelNumber(command, 0x45, 11) };
-        extendedInfo.set("NumberSOS", L4BytesToTelNumber(command, 0x45, 11));
+        extendedInfo.set("NumberSOS", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x45, 11));
             
         //config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;  
@@ -1187,15 +862,15 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         extendedInfo.set("command", cmd);
         //return new SmsAddrConfig { 
         //DsptEmailGprs = Level4Converter.BytesToString(command, 0, 30), 
-        extendedInfo.set("DsptEmailGprs", L4BytesToString(command, 0, 30));
+        extendedInfo.set("DsptEmailGprs", TeletrackProtocolA1.L4BytesToString(command, 0, 30));
         //DsptEmailSMS = Level4Converter.BytesToString(command, 30, 14), 
-        extendedInfo.set("DsptEmailSMS", L4BytesToTelNumber(command, 30, 14));
+        extendedInfo.set("DsptEmailSMS", TeletrackProtocolA1.L4BytesToTelNumber(command, 30, 14));
         //SmsCentre = Level4Converter.BytesToTelNumber(command, 0x2c, 11), 
-        extendedInfo.set("SmsCentre", L4BytesToTelNumber(command, 0x2c, 11));
+        extendedInfo.set("SmsCentre", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x2c, 11));
         //SmsDspt = Level4Converter.BytesToTelNumber(command, 0x37, 11), 
-        extendedInfo.set("SmsDspt", L4BytesToTelNumber(command, 0x37, 11));
+        extendedInfo.set("SmsDspt", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x37, 11));
         //SmsEmailGate = Level4Converter.BytesToTelNumber(command, 0x42, 11) };
-        extendedInfo.set("SmsEmailGate", L4BytesToTelNumber(command, 0x42, 11));
+        extendedInfo.set("SmsEmailGate", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x42, 11));
             
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;    
@@ -1210,11 +885,11 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         extendedInfo.set("command", cmd);
         //return new UniqueConfig { 
         //DispatcherID = Level4Converter.BytesToString(command, 0, 4), 
-        extendedInfo.set("DispatcherID", L4BytesToString(command, 0, 4));
+        extendedInfo.set("DispatcherID", TeletrackProtocolA1.L4BytesToString(command, 0, 4));
         //Password = Level4Converter.BytesToString(command, 4, 8), 
-        extendedInfo.set("Password", L4BytesToString(command, 4, 8));
+        extendedInfo.set("Password", TeletrackProtocolA1.L4BytesToString(command, 4, 8));
         //TmpPassword = Level4Converter.BytesToString(command, 12, 8) };
-        extendedInfo.set("TmpPassword", L4BytesToString(command, 12, 8));
+        extendedInfo.set("TmpPassword", TeletrackProtocolA1.L4BytesToString(command, 12, 8));
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;   
@@ -1229,7 +904,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         extendedInfo.set("command", cmd);        
         //return new ZoneConfigConfirm { 
         //ZoneMsgID = Level4Converter.BytesToInt(command, 0), 
-        extendedInfo.set("ZoneMsgID", L4BytesToInt(command, 0));
+        extendedInfo.set("ZoneMsgID", TeletrackProtocolA1.L4BytesToInt(command, 0));
         //ZoneState = command[4], 
         extendedInfo.set("ZoneState", command[4]);
         //Result = command[5] };
@@ -1239,13 +914,11 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         return config; 
     }
         
-
-    
     private List<Position> GetDataGps(byte[] command, byte cmd) {
             //DataGpsAnswer answer = new DataGpsAnswer();
         List<Position> positions = new LinkedList<Position>();
         short startIndex = 0;
-        int WhatWrite = L4ToInt16(command, startIndex);
+        int WhatWrite = TeletrackProtocolA1.L4ToInt16(command, startIndex);
         startIndex = (short) (startIndex + 2);
         byte num2 = command[startIndex];
         startIndex = (short) (startIndex + 1);
@@ -1259,79 +932,159 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
             position.setDeviceId(deviceId);
             position.setTableName(tableName);
             position.setImei(deviceImei);
-            if (IsBitSetInMask(WhatWrite, (byte)0)){
-                data.Time = Level4Converter.BytesToInt(command, startIndex);
+            
+            int Flags = 0;
+            int Latitude = 0;
+            int Longitude = 0;
+            
+            if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte)0)){
+                long time = TeletrackProtocolA1.L4BytesToInt(command, startIndex);
+                startIndex = (short) (startIndex + 4);
+                
+                TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+                java.util.Date date= new java.util.Date((time*1000));
+                position.setTime(date);
+
+            }
+            if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte)1)){
+                Latitude = TeletrackProtocolA1.L4BytesToInt(command, startIndex) * 10;
+                startIndex = (short) (startIndex + 4);
+
+                position.setLatitude(Latitude / 600000.0); 
+            }
+            if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte)2)){
+                Longitude = TeletrackProtocolA1.L4BytesToInt(command, startIndex) * 10;
+                startIndex = (short) (startIndex + 4);
+
+                position.setLongitude(Longitude / 600000.0);
+            }
+            if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte)3)){
+                int Altitude = command[startIndex] & 0xFF;
+                position.setAltitude(Altitude + 0.0);
+                startIndex = (short) (startIndex + 1);
+            }
+            if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte)4)){
+                position.setCourse(((command[startIndex] * 360) / 255.0));
+                startIndex = (short) (startIndex + 1);
+            }
+            if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte) 5)){
+                position.setSpeed(command[startIndex] * 1.85);
+                startIndex = (short) (startIndex + 1);
+            }
+            if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte) 6)){
+                extendedInfo.set("logId", TeletrackProtocolA1.L4BytesToInt(command, startIndex));
                 startIndex = (short) (startIndex + 4);
             }
-            if (IsBitSetInMask(WhatWrite, (byte)1)){
-                data.Latitude = Level4Converter.BytesToInt(command, startIndex) * 10;
+            if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte) 7)){
+                Flags = command[startIndex];
+                extendedInfo.set("Flags", Flags);
+                startIndex = (short) (startIndex + 1);
+            }
+            if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte) 8)){
+                long events = TeletrackProtocolA1.L4BytesToInt(command, startIndex) & 0xFFFFFFFF;
+                extendedInfo.set("events", events);
                 startIndex = (short) (startIndex + 4);
             }
-            if (IsBitSetInMask(WhatWrite, (byte)2)){
-                data.Longitude = Level4Converter.BytesToInt(command, startIndex) * 10;
-                startIndex = (short) (startIndex + 4);
+            if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte) 9)){
+                String sensors = "";  //8b
+                sensors += String.format("%8s", Integer.toBinaryString(command[startIndex] & 0xFF)).replace(' ', '0');
+                startIndex = (short) (startIndex + 1);
+                sensors += String.format("%8s", Integer.toBinaryString(command[startIndex] & 0xFF)).replace(' ', '0');
+                startIndex = (short) (startIndex + 1);
+                sensors += String.format("%8s", Integer.toBinaryString(command[startIndex] & 0xFF)).replace(' ', '0');
+                startIndex = (short) (startIndex + 1);
+                sensors += String.format("%8s", Integer.toBinaryString(command[startIndex] & 0xFF)).replace(' ', '0');
+                startIndex = (short) (startIndex + 1);
+                sensors += String.format("%8s", Integer.toBinaryString(command[startIndex] & 0xFF)).replace(' ', '0');
+                startIndex = (short) (startIndex + 1);
+                sensors += String.format("%8s", Integer.toBinaryString(command[startIndex] & 0xFF)).replace(' ', '0');
+                startIndex = (short) (startIndex + 1);
+                sensors += String.format("%8s", Integer.toBinaryString(command[startIndex] & 0xFF)).replace(' ', '0');
+                startIndex = (short) (startIndex + 1);
+                sensors += String.format("%8s", Integer.toBinaryString(command[startIndex] & 0xFF)).replace(' ', '0');
+                startIndex = (short) (startIndex + 1);
+                
+                extendedInfo.set("sensors", sensors);
             }
-            if (IsBitSetInMask(WhatWrite, (byte)3)){
-                data.Altitude = command[startIndex];
-                startIndex = (short) (startIndex + 1);
-            }
-            if (IsBitSetInMask(WhatWrite, (byte)4)){
-                position.setCourse(command[startIndex]);
-                startIndex = (short) (startIndex + 1);
-            }
-            if (IsBitSetInMask(WhatWrite, (byte) 5)){
-                data.Speed = command[startIndex];
-                startIndex = (short) (startIndex + 1);
-            }
-            if (IsBitSetInMask(WhatWrite, (byte) 6)){
-                data.LogID = Level4Converter.BytesToInt(command, startIndex);
-                startIndex = (short) (startIndex + 4);
-            }
-            if (IsBitSetInMask(WhatWrite, (byte) 7)){
-                data.Flags = command[startIndex];
-                startIndex = (short) (startIndex + 1);
-            }
-            if (IsBitSetInMask(WhatWrite, (byte) 8)){
-                data.Events = Level4Converter.BytesToUInt(command, startIndex);
-                startIndex = (short) (startIndex + 4);
-            }
-            if (IsBitSetInMask(WhatWrite, (byte) 9)){
-                data.Sensor1 = command[startIndex];
-                startIndex = (short) (startIndex + 1);
-                data.Sensor2 = command[startIndex];
-                startIndex = (short) (startIndex + 1);
-                data.Sensor3 = command[startIndex];
-                startIndex = (short) (startIndex + 1);
-                data.Sensor4 = command[startIndex];
-                startIndex = (short) (startIndex + 1);
-                data.Sensor5 = command[startIndex];
-                startIndex = (short) (startIndex + 1);
-                data.Sensor6 = command[startIndex];
-                startIndex = (short) (startIndex + 1);
-                data.Sensor7 = command[startIndex];
-                startIndex = (short) (startIndex + 1);
-                data.Sensor8 = command[startIndex];
-                startIndex = (short) (startIndex + 1);
-            }
-            if (IsBitSetInMask(WhatWrite, (byte)10)){
-                data.Counter1 = Level4Converter.BytesToUShort(command, startIndex);
+            if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte)10)){
+                extendedInfo.set("counter1", TeletrackProtocolA1.L4ToInt16(command, startIndex) & 0xFFFF);
                 startIndex = (short) (startIndex + 2);
-                data.Counter2 = Level4Converter.BytesToUShort(command, startIndex);
+                extendedInfo.set("counter2", TeletrackProtocolA1.L4ToInt16(command, startIndex) & 0xFFFF);
                 startIndex = (short) (startIndex + 2);
-                data.Counter3 = Level4Converter.BytesToUShort(command, startIndex);
+                extendedInfo.set("counter3", TeletrackProtocolA1.L4ToInt16(command, startIndex) & 0xFFFF);
                 startIndex = (short) (startIndex + 2);
-                data.Counter4 = Level4Converter.BytesToUShort(command, startIndex);
+                extendedInfo.set("counter4", TeletrackProtocolA1.L4ToInt16(command, startIndex) & 0xFFFF);
                 startIndex = (short) (startIndex + 2);
             }
-            if ((Math.Abs(data.Longitude) > 0x66ff300) || (Math.Abs(data.Latitude) > 0x337f980)){
-                data.Valid = false;
+            if ((Math.abs(Longitude) > 0x66ff300) || (Math.abs(Latitude) > 0x337f980)){
+                position.setValid(false);
             }
             else{
-                data.Valid = (data.Flags & 8) != 0;
+                position.setValid((Flags & 8) != 0);
             }
             positions.add(position);
         }
         return positions;
     }
+    
+    /*
+    * Декодирование сообщения кофигурации событий 13, 23, 43 
+    */
+    private DeviceCommand GetEventConfig(byte[] command, byte cmd){
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+        DeviceCommand config = new DeviceCommand();
+        config.setDeviceId(deviceId);
+        config.setImei(deviceImei);
         
+        extendedInfo.set("command", cmd);
+        //extendedInfo.set("commandName", );
+        
+        //extendedInfo.set("codec", codec);
+        extendedInfo.set("SpeedChange", command[0] & 0xFF);        
+        extendedInfo.set("CourseBend", TeletrackProtocolA1.L4ToInt16(command, 1));
+        extendedInfo.set("Distance1", TeletrackProtocolA1.L4ToInt16(command, 3));
+        extendedInfo.set("Distance2", TeletrackProtocolA1.L4ToInt16(command, 5));
+        
+        
+        for (int i = 0; i < 0x20; i++){
+            extendedInfo.set("EventMask"+i, TeletrackProtocolA1.L4ToInt16(command, (i << 1) + 7));
+        }
+        
+        extendedInfo.set("MinSpeed", TeletrackProtocolA1.L4ToInt16(command, 0x47));
+        extendedInfo.set("Timer1", TeletrackProtocolA1.L4ToInt16(command, 0x49));
+        extendedInfo.set("Timer2", TeletrackProtocolA1.L4ToInt16(command, 0x4b));
+        
+        config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+        return config;
+    }
+
+    private DeviceCommand GetIdConfig(byte[] command, byte cmd) {
+        ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+        DeviceCommand config = new DeviceCommand();
+        config.setDeviceId(deviceId);
+        config.setImei(deviceImei);
+        
+        extendedInfo.set("command", cmd);
+        //return new IdConfig { 
+        //DevIdShort = Level4Converter.BytesToString(command, 0, 4), 
+        extendedInfo.set("DevIdShort", TeletrackProtocolA1.L4BytesToString(command,0, 4));
+        //DevIdLong = Level4Converter.BytesToString(command, 4, 0x10), 
+        extendedInfo.set("DevIdLong", TeletrackProtocolA1.L4BytesToString(command,4, 0x10));
+        //ModuleIdGps = Level4Converter.BytesToString(command, 20, 4), 
+        extendedInfo.set("ModuleIdGps", TeletrackProtocolA1.L4BytesToString(command, 20, 4));
+        //ModuleIdGsm = Level4Converter.BytesToString(command, 0x18, 4), 
+        extendedInfo.set("ModuleIdGsm", TeletrackProtocolA1.L4BytesToString(command, 0x18, 4));
+        //ModuleIdRf = Level4Converter.BytesToString(command, 0x20, 4), 
+        extendedInfo.set("ModuleIdRf", TeletrackProtocolA1.L4BytesToString(command, 0x20, 4));
+        //ModuleIdSs = Level4Converter.BytesToString(command, 0x24, 4), 
+        extendedInfo.set("ModuleIdSs", TeletrackProtocolA1.L4BytesToString(command, 0x24, 4));
+        //VerProtocolLong = Level4Converter.BytesToString(command, 40, 0x10), 
+        extendedInfo.set("VerProtocolLong", TeletrackProtocolA1.L4BytesToString(command, 40, 0x10));
+        //VerProtocolShort = Level4Converter.BytesToString(command, 0x38, 2) };
+        extendedInfo.set("VerProtocolShort", TeletrackProtocolA1.L4BytesToString(command, 0x38, 2));
+        
+        config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+        return config;
+    }
+
 }

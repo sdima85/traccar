@@ -255,12 +255,6 @@ public class ServerManager {
             serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
                 @Override
                 protected void addSpecificHandlers(ChannelPipeline pipeline) {
-                    TeletrackFrameDecoder frameDecoder = new TeletrackFrameDecoder();
-                    
-                    //pipeline.addLast("frameDecoder", new CharacterDelimiterFrameDecoder(4096, "%%"));
-                    //frameDecoder.setMaxCumulationBufferComponents(4048);
-                    //frameDecoder.setMaxCumulationBufferCapacity(4048);
-                    //pipeline.addLast("frameDecoder", frameDecoder);
                     pipeline.addLast("objectDecoder", new TeletrackProtocolDecoder(dataManager, protocol, properties));
                 }
             });
