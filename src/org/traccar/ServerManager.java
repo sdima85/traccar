@@ -103,6 +103,7 @@ public class ServerManager {
 
         initBitrakServer("bitrak");
         initTeletrackServer("teletrack");
+        initRoadKeyServer("roadkey");
         
         initXexunServer("xexun");
         initGps103Server("gps103");
@@ -261,6 +262,19 @@ public class ServerManager {
         }
     }
     
+    private void initRoadKeyServer(final String protocol) throws SQLException {
+        if (isProtocolEnabled(properties, protocol)) {
+            serverList.add(new TrackerServer(this, new ServerBootstrap(), protocol) {
+                @Override
+                protected void addSpecificHandlers(ChannelPipeline pipeline) {
+                    pipeline.addLast("frameDecoder", new CharacterDelimiterFrameDecoder(1024, "\r\n", "\n"));
+                    pipeline.addLast("stringDecoder", new StringDecoder());
+                    pipeline.addLast("stringEncoder", new StringEncoder());
+                    pipeline.addLast("objectDecoder", new RoadKeyProtocolDecoder(dataManager, protocol, properties));
+                }
+            });
+        }
+    }
 
     private void initProtocolDetector() throws SQLException {
         String protocol = "detector";
