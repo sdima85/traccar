@@ -118,9 +118,8 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         }
         
         if (channel != null) {
-            channel.write(getAck(false));
-            
-            sendCommand(channel);
+            channel.write(getAck(false));            
+            //sendCommand(channel);
         }
     }
     
@@ -144,74 +143,47 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
     private void sendCommand(Channel channel){       
         List<DeviceCommand> commands = getDataManager().getCommandsByImei(deviceImei);
         
-        if(commands == null){ return; }        
-        //
-        int count = 7; //        
-        //Не больше 4х в пакете
-        int respCmd = (commands.size() > 3 ? 4 : commands.size());
-        byte[] sendData = null;
+        if(commands == null){ return; }      
+        if(commands.isEmpty()){ return; }
         
         String styleInfo = this.getDataManager().getStyleInfo();
+        DeviceCommand command = commands.get(0);
+        //EncodeConfigQuery
+        String data = command.getData();
+        String cmdName = "";
+        String paramId = "0";
+        byte[] sendData = null;
         
-        for (int i = 0; i < respCmd; i++) {
-            DeviceCommand command = commands.get(i);
-            /*
-            if((command.getCommand() != null) && (!"".equals(command.getCommand()))){ //command hex
-                String cmd = command.getCommand();
-                if(sendData == null){                    
-                    sendData = ChannelBufferTools.convertHexString(cmd);
-                } else {
-                    sendData = ChannelBufferTools.mergeArray(sendData, ChannelBufferTools.convertHexString(cmd));
-                }
-                
-            }
-            else if (command.getData() != null){//command params     
-                //
-                String data = command.getData();
-                if(styleInfo.equals("quant")){
-                    String cmdName = this.getDataManager().getQuantParametr(data,"command");
-                    String paramId = this.getDataManager().getQuantParametr(data,"param");
-                    String paramValue = this.getDataManager().getQuantParametr(data,"value");
-                    
-                    if(cmdName != null){
-                        byte[] sData = getBuildConfig(cmdName, (paramId == null ? 0 : Integer.parseInt(paramId)), paramValue);
-                        
-                        command.setCommand(ChannelBufferTools.readHexString(sData));                        
-                        if(sendData == null){
-                            sendData = sData;
-                        } else {
-                            sendData = ChannelBufferTools.mergeArray(sendData, sData);
-                        }
-                    }
-                }
-            }*/
+        if(styleInfo.equals("quant")){
+            cmdName = this.getDataManager().getQuantParametr(data,"command");
+            paramId = this.getDataManager().getQuantParametr(data,"param");
+            //String paramValue = this.getDataManager().getQuantParametr(data,"value");
+        }        
+        int cmdId = Integer.parseInt(paramId);
+        
+        if("getparam".equals(cmdName) && (in(cmdId,0x1F,0x20,0x21,0x22,0x25,0x46,0x47,0x48,0x49,0x4A))){            
+            sendData = EncodeConfigQuery(command, cmdId);
+            String msg = TeletrackProtocolA1.GetStringFromByteArray(sendData);
+            command.setCommand(msg);
         }
-        if(sendData != null) {
-            int cmdLen = sendData.length; //(cmd.length()/2);
-            ChannelBuffer response2 = ChannelBuffers.directBuffer(count + cmdLen);
-            //1 - 2 байта = 0x0000
-            response2.writeShort(0x0000);
-            //2 - Длина данных 2 байта без CRC16 = 0x04
-            response2.writeShort(cmdLen + 1);
-            //Данные
-            //3 - Кол-во пакетов 1 байт = 0x01
-            response2.writeByte(respCmd);
-            //4
-            response2.writeBytes(sendData);
-            //6 - CRC16 2 байта (с №3 ПО №5 включительно) =             
-            response2.writeShort(Crc.crc16_A001(response2.toByteBuffer(4, cmdLen + 1)));
-            channel.write(response2);
-            Log.debug("Response=" + ChannelBufferTools.readHexString(response2, (count + cmdLen) * 2));
+        else if("getparam".equals(cmdName) && (cmdId == 0x24)){ //DataGpsQuery
+            //EncodeDataGpsQuery
+            sendData = EncodeDataGpsQuery(command, cmdId);
+            String msg = TeletrackProtocolA1.GetStringFromByteArray(sendData);
+            command.setCommand(msg);
         }
         
-        for (int i = 0; i < respCmd; i++) {
-            //update to send
+        else if("setparam".equals(cmdName)){
+            
+        }
+        
+        if(sendData != null){
+            channel.write(ChannelBuffers.wrappedBuffer(sendData));
             try{
                 getDataManager().addCommand(commands.get(0));
             }catch(SQLException e){
                 Log.warning(e);
             }
-            //delete
             commands.remove(0);
         }        
     }
@@ -371,79 +343,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         return positions;
     }
     
-    /*
-    * Разбор команды от устройства
-    */
-    private List<DeviceCommand> parseCommand(Channel channel, ChannelBuffer buf){
-        List<DeviceCommand> commands = new LinkedList<DeviceCommand>();      
-        
-        /*
-        buf.skipBytes(2); //
-        buf.readUnsignedShort(); // data length
-        int count = buf.readUnsignedByte(); // count
-        
-          
-
-        for(int i = 0; i < count; i++){
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
-            DeviceCommand command = new DeviceCommand();
-            command.setDeviceId(deviceId);
-            command.setImei(deviceImei);
-            
-            int codec = buf.readUnsignedByte(); // codec
-            extendedInfo.set("codec", codec);
-            
-            int commandStart = 1;
-            int commandLength = 0;
-            
-            //Ответ серверу на запрос значения параметра
-            if(codec == 33){//Ответ треккера на конфигурационный пакет – запрос значения параметра
-                int paramId = buf.readUnsignedShort();
-                int length = buf.readUnsignedByte();                    
-                String paramVal=getReadFromIdConfig(buf, paramId, length);
-                               
-                Log.debug("codec="+codec+" paramId="+paramId+" paramVal="+paramVal);
-                extendedInfo.set("command", "getparam");
-                extendedInfo.set("param", paramId);
-                extendedInfo.set("value", paramVal);
-                commandStart = length + 4;
-                commandLength = length + 4;
-            }
-            else if(codec == 37){//Ответ треккера на конфигурационный пакет – установка значения параметра
-                int paramId = buf.readUnsignedShort();
-                int isSet = buf.readUnsignedByte(); //0 – неверный параметр, 255 – параметр установлен
-                extendedInfo.set("command", "getparam");
-                extendedInfo.set("param", paramId);
-                extendedInfo.set("isset", isSet);                
-                commandStart = 4;
-                commandLength = 4;
-            }
-            else if(codec == 41){//Ответ на пакет с командой от сервера
-                short cmd = buf.readUnsignedByte();
-                short length = buf.readUnsignedByte();   
-                extendedInfo.set("command", "command");
-                extendedInfo.set("param", getCommndParam((byte)cmd));
-                String val= getCommandValue(buf, (byte)cmd, length);
-                if(!"".equals(val)){
-                    extendedInfo.set("value", val);
-                }
-            }
-            else if(codec == 42){//Ответ на неподдерживаемую команду от сервера
-                short cmd = buf.readUnsignedByte();
-                extendedInfo.set("command", "command");
-                extendedInfo.set("param", getCommndParam((byte)cmd));
-            }
-            int idx = buf.readerIndex();
-            buf.readerIndex(idx-commandStart);
-            String hex = ChannelBufferTools.readHexString(buf, commandLength*2); 
-            command.setCommand(hex);            
-            command.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
-            commands.add(command);
-        }
-        */
-        return commands;
-    }
-    
+       
     private Object parseA1(Channel channel, ChannelBuffer buf){
         if(!"%%".equals(buf.toString(A1_EMAIL_SIZE+1, 2, Charset.defaultCharset()))){
             // Признак начала пакета расположен не на своем месте в позиции {0}, ожидалось в позиции 14
@@ -484,10 +384,18 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         Object description = DecodeLevel3Message(TeletrackProtocolA1.L1Decode6BitTo8(buffer4));
         String ShortID = TeletrackProtocolA1.L1BytesToString(buffer3);
         //description.Source = message;
-        //description.Message = Util.GetStringFromByteArray(message);
+        
+        if (description instanceof DeviceCommand){
+            byte[] Source = new byte[160]; //144        
+            buf.getBytes(0, Source, 0, 160);
+            ((DeviceCommand)description).setCommand(TeletrackProtocolA1.GetStringFromByteArray(Source));
+        }
 
-
-        return null;
+        if (channel != null) {
+            ChannelBuffer response = getAck(false);
+            channel.write(response);
+        }
+        return description;
     }
     
     private void packetClear(){
@@ -1087,4 +995,147 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         return config;
     }
 
+    public byte[] EncodeDataGpsQuery(DeviceCommand query, int commandID){
+        String data = query.getData();
+        //return new DataGpsQuery { 
+        //ShortID = this.textBoxID_TT.Text, 
+        
+        
+        //Идентификатор сообщения. 
+        //Соответствует полю MessageCounter таблицы Messages в базе данных компании RCS. 
+        //Позволяет четко определять порядок отправки-получения сообщений для заданного телетрека. 
+        //При отправке сообщения телетреку из диспетчерского центра счетчик сообщений 
+        //для данного телетрека инкрементируется и записывается в это поле. 
+        //Телетрек после получения сообщения создает ответ и в поле 
+        //MessageID подставляет значение MessageID принятого пакета. 
+        //Теперь после получения диспетчерским центром подтверждения 
+        //от телетрека становиться понятно, дошло сообщение или нет. 
+        //Этот механизм позволяет избежать колизий, в случае отправки подряд 
+        //нескольких сообщений, а дошло только одно и непонятно какое.
+        //MessageID = this.cmdMsgCnt = (ushort) (this.cmdMsgCnt + 1), 
+        
+        //Маска, по которой определяется, какие критерии нужно использовать при 
+        //выполнении анализа лог памяти телетрека. Расшифровка номеров бит: 
+        //0 - последние записи 1 - последние секунды 2 - последние метры 
+        //3 - максимальное кол-во сообщений 4 - события 5 - индексы 
+        //6 - резерв 7 - резерв 8 - резерв 9 - резерв 
+        //10 - интервал по времени 11 - интервал по скорости 
+        //12 - интервал по широте 13 - интервал по долготе 
+        //14 - интервал по высоте 15 - интервал по направлению 
+        //16 - интервал по индексам 17 - флаги 
+        //CheckMask = 1, 
+        int CheckMask = Integer.parseInt(this.getDataManager().getQuantParametr(data,"CheckMask"));
+        
+        //CommandID = CommandDescriptor.DataGpsQuery, 
+        
+        //Маска, в которой описано, какие поля структуры GPS данных следует передать. 
+        //Расшифровка номеров бит маски: 0 - время 1 - широта 2 - долгота 
+        //3 - высота 4 - направление 5 - скорость 6 - индекс лога (всегда равен 1) 
+        //7 - флаги 8 - события 9 - датчики 10 - счетчики  
+        //WhatSend = 0x3ff, 
+        
+        //MaxSmsNumber = 1, 
+        //StartTime = 0, Начало интервала времени, UnixTime 
+        //EndTime=0, Конец интервала времени, UnixTime  
+        //EndTime = 0, 
+        //LastRecords = 0x65 };    
+        
+        String str;
+        if (query == null){
+            //throw new ArgumentNullException("query", "Не передан запрос GPS данных query");
+            return null;
+        }
+        //if (!query.Validate(out str)){
+            //throw new A1Exception(string.Format("A1_7. Не пройдена проверка правильности заполнения атрубутов сущности {0}: {1}.", query.GetType().Name, str));
+        //}
+        //query.CommandID = CommandDescriptor.DataGpsQuery;
+        
+        int id = (int) Integer.valueOf(query.getId().toString());
+        byte[] destinationCommand = TeletrackProtocolA1.GetCommandLevel3Template((byte) commandID, id);
+        //byte[] destinationCommand = TeletrackProtocolA1.GetCommandLevel3Template((byte) query.CommandID, query.MessageID);
+        int startIndex = 3;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UIntToBytes(CheckMask), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        /*Util.FillCommandAttribute(Level4Converter.UIntToBytes(query.Events), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(Level4Converter.UIntToBytes(query.LastRecords), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(Level4Converter.UIntToBytes(query.LastTimes), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(Level4Converter.UIntToBytes(query.LastMeters), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(Level4Converter.UIntToBytes(query.MaxSmsNumber), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(Level4Converter.UIntToBytes(query.WhatSend), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.StartTime), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(new byte[] { query.StartSpeed }, destinationCommand, startIndex, 1);
+        startIndex++;
+        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.StartLatitude / 10), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.StartLongitude / 10), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(new byte[] { query.StartAltitude }, destinationCommand, startIndex, 1);
+        startIndex++;
+        Util.FillCommandAttribute(new byte[] { query.StartDirection }, destinationCommand, startIndex, 1);
+        startIndex++;
+        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.StartLogId), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(new byte[] { query.StartFlags }, destinationCommand, startIndex, 1);
+        startIndex++;
+        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.EndTime), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(new byte[] { query.EndSpeed }, destinationCommand, startIndex, 1);
+        startIndex++;
+        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.EndLatitude / 10), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.EndLongitude / 10), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(new byte[] { query.EndAltitude }, destinationCommand, startIndex, 1);
+        startIndex++;
+        Util.FillCommandAttribute(new byte[] { query.EndDirection }, destinationCommand, startIndex, 1);
+        startIndex++;
+        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.EndLogId), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(new byte[] { query.EndFlags }, destinationCommand, startIndex, 1);
+        startIndex++;
+        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.LogId1), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.LogId2), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.LogId3), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.LogId4), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.LogId5), destinationCommand, startIndex, 4);
+        query.Source = GetMessageLevel0(GetMessageLevel1(destinationCommand, query.ShortID), "");
+        query.Message = Util.GetStringFromByteArray(query.Source);
+        return query.Message;
+                */
+        return null;
+    }
+    
+    private byte[] EncodeConfigQuery(DeviceCommand query, int commandID){
+        if (query == null){
+            //throw new ArgumentNullException("query", "Не передан запрос кофигурации телефонных номеров");
+            return null;
+        }
+        
+        //int CommandID = 0x21;//  //CommandDescriptor.EventConfigQuery;
+        int id = (int) Integer.valueOf(query.getId().toString());
+        byte[] buffer = TeletrackProtocolA1.GetCommandLevel3Template((byte) commandID, id);
+        return TeletrackProtocolA1.GetMessageLevel0(TeletrackProtocolA1.GetMessageLevel1(buffer, deviceImei), "");
+        //String Message = TeletrackProtocolA1.GetStringFromByteArray(Source);
+        //return Message;
+        
+    }
+    
+    public static <T> boolean in(T value, T... list) {
+        for (T item : list) {
+            if (value.equals(item))
+                return true;
+        }
+        return false;
+    }
 }

@@ -272,5 +272,200 @@ public class TeletrackProtocolA1 {
         return /*Convert.ToChar*/(char)((int) ((code + 0x410) - 0xc0));
     }
 
+    //Encoder Levels
     
+    public static byte[] L4UIntToBytes(long value){
+        Long val = ((value >> 0x10) & 0xFFFF);        
+        byte[] buffer = L4UShortToBytes( Integer.valueOf(val.toString()) );
+        val = (value & 0xFFFF);
+        byte[] buffer2 = L4UShortToBytes( Integer.valueOf(val.toString()) );
+        return new byte[] { buffer[0], buffer[1], buffer2[0], buffer2[1] };
+    }
+    public static byte[] L4UShortToBytes(int value){
+        byte[] result = new byte[2];
+        result[0] = (byte)((value >> 8) & 0xFF);
+        result[1] = (byte) (value & 0xFF);
+        return result;
+    }
+    public static byte L1ValueToSymbol(byte value){
+        byte ASCII_CODE_A = 65; //Convert.ToByte('A');  
+        
+        byte num = (byte) ('.' & 0xFF); //Convert.ToByte('.');
+        if (value <= 0x19){
+            return (byte) (ASCII_CODE_A + value);
+        }
+        if ((value >= 0x1a) && (value <= 0x33)){
+            //Convert.ToByte('a') 0x61
+            return (byte) ((0x61 + value) - 0x1a);
+        }
+        if ((value >= 0x34) && (value <= 0x3d)){
+            //Convert.ToByte('0') 0x30
+            return (byte) ((0x30 + value) - 0x34);
+        }
+        if (value == 0x3e){
+            return 0x2B; //Convert.ToByte('+');
+        }
+        if (value == 0x3f){
+            return 0x2D; //Convert.ToByte('-');
+        }
+        //Convert.ToByte('F') 0x46
+        if ((value >= ASCII_CODE_A) && (value <= 0x46)){
+            num = (byte) ((value - ASCII_CODE_A) + 0x3a);
+        }
+        return num;
+    }
+    
+    
+    public static byte[] L1Encode8BitTo6(byte[] source){
+        if (source == null){
+            //throw new ArgumentNullException("source", "Не передан массив байт source");
+            return null;
+        }
+        if (source.length != 0x66){
+            //throw new ArgumentException("source", string.Concat(new object[] { "Длина переданного массива source (", source.Length, ") не соответсвует требуемой длине - ", (byte) 0x66 }));
+            return null;
+        }
+        byte[] buffer = new byte[0x88];
+        for (int i = 0; i < 0x22; i++){
+            short num5 = 0;
+            short num6 = 0;
+            short num7 = 0;
+            short num8 = 0;
+            int index = 3 * i;
+            short num2 = source[index];
+            short num3 = source[index + 1];
+            short num4 = source[index + 2];
+            num5 = (short) ((num2 >> 2) & 0xFF);
+            num6 = (short) ((num3 >> 2) & 0xFF);
+            num7 = (short) ((num4 >> 2) & 0xFF);
+            num2 = (short) ((num2 << 6) & 0xFF);
+            num2 = (short) ((num2 >> 6) & 0xFF);
+            num3 = (short) ((num3 << 6) & 0xFF);
+            num3 = (short) ((num3 >> 4) & 0xFF);
+            num4 = (short) ((num4 << 6) & 0xFF);
+            num4 = (short) ((num4 >> 2) & 0xFF);
+            num8 = (short) (((num2 + num3) + num4) & 0xFF);
+            buffer[i * 4] = L1ValueToSymbol((byte)(num5 & 0xFF));
+            buffer[(i * 4) + 1] = L1ValueToSymbol((byte)(num6 & 0xFF));
+            buffer[(i * 4) + 2] = L1ValueToSymbol((byte)(num7 & 0xFF));
+            buffer[(i * 4) + 3] = L1ValueToSymbol((byte)(num8 & 0xFF));
+        }
+        return buffer;
+    }
+
+    //Encoder
+    
+    
+    public static byte[] GetCommandLevel3Template(byte commandId, int messageId){
+        byte[] buffer = new byte[0x66];
+        buffer[0] = commandId;
+        byte[] buffer2 = L4UShortToBytes(messageId);
+        buffer[1] = buffer2[0];
+        buffer[2] = buffer2[1];
+        for (int i = 3; i < 0x66; i++){
+            buffer[i] = 0x5f;
+        }
+        return buffer;
+    }
+
+    public static byte[] GetMessageLevel0(byte[] level1Message, String email){
+        if (level1Message == null){
+            //throw new ArgumentNullException("level1Message", "Не передан массив байт level1Message");
+            return null;
+        }
+        if (level1Message.length != 0x90) {
+            //throw new A1Exception(string.Format("A1_1. Длина пакета на уровне {0} не соответствует требованиям протокола. Ожидалось {1} байт, принято - {2}.", "LEVEL3", (byte) 0x90, level1Message.Length));
+            return null;
+        }
+        if (email == null){
+            //throw new ArgumentNullException("email", "Не передан параметр email");
+            return null;
+        }
+        if (email.length() > 13){
+            //throw new A1Exception(string.Format("A1_8. Длина Email не может быть больше {0} символов.", (byte) 13));
+            return null;
+        }
+        byte[] destinationArray = new byte[160];
+        //byte[] emailArr = email.getBytes();
+        for (int i = 0; i <= 13; i++){
+            if (i < email.length()){
+                short num2 = (short) (email.charAt(i) & 0xFF); //Convert.ToByte(email[i]);
+                switch (num2)
+                {
+                    case 0:
+                    case 0xff:
+                    {
+                        destinationArray[i] = 32;//Convert.ToByte(' ');
+                        continue;
+                    }
+                }
+                destinationArray[i] = (byte)num2;
+            }
+            else
+            {
+                destinationArray[i] = 32;//Convert.ToByte(' ');
+            }
+        }
+        destinationArray[13] = 32;//Convert.ToByte(' ');
+        destinationArray[14] = 0x25;
+        destinationArray[15] = 0x25;
+        //Array.Copy(level1Message, 0, destinationArray, 0x10, 0x90);
+        System.arraycopy(level1Message, 0, destinationArray, 0x10, 0x90);
+        return destinationArray;
+    }
+
+    public static byte[] GetMessageLevel1(byte[] level3Command, String devShortId){
+        if (level3Command == null){
+            //throw new ArgumentNullException("level3Command", "Не передан массив байт level3Command");
+            return null;
+        }
+        if (level3Command.length != 0x66){
+            //throw new A1Exception(string.Format("A1_1. Длина пакета на уровне {0} не соответствует требованиям протокола. Ожидалось {1} байт, принято - {2}.", "LEVEL3", (byte) 0x66, level3Command.Length));
+            return null;
+        }
+        //if (String.IsNullOrEmpty(devShortId)){
+            //throw new ArgumentNullException("devShortId", "Не передан параметр devShortId");
+        //    return null;
+        //}
+        byte[] destinationArray = new byte[0x90];
+        destinationArray[0] = L1ValueToSymbol((byte)0);
+        destinationArray[1] = L1ValueToSymbol((byte)0);
+        destinationArray[2] = L1ValueToSymbol((byte)0x22);
+        destinationArray[3] = L1ValueToSymbol(((byte)devShortId.charAt(0)));
+        destinationArray[4] = L1ValueToSymbol((byte)(devShortId.charAt(1)));
+        destinationArray[5] = L1ValueToSymbol((byte)(devShortId.charAt(2)));
+        destinationArray[6] = L1ValueToSymbol((byte)(devShortId.charAt(3)));
+        //Array.Copy(Level1Converter.Encode8BitTo6(level3Command), 0, destinationArray, 8, 0x88);
+        System.arraycopy(L1Encode8BitTo6(level3Command), 0, destinationArray, 8, 0x88);
+        destinationArray[7] = L1ValueToSymbol(CalculateLevel1CRC(destinationArray, 0, 0x88));
+        return destinationArray;
+    }
+    
+    public static String GetStringFromByteArray(byte[] source){
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < source.length; i++){
+            builder.append((char) (source[i] & 0xFF));
+        }
+        return builder.toString();
+    }
+    
+    public static void FillCommandAttribute(byte[] sourceAttribute, byte[] destinationCommand, int startIndex, int alignLength){
+        if (sourceAttribute == null){
+            //throw new ArgumentNullException("sourceAttribute", "Не передан массив байт sourceAttribute");
+        }
+        if ((destinationCommand == null) && (destinationCommand.length == 0)){
+            //throw new ArgumentNullException("destinationCommand", "Не передан массив байт destinationCommand");
+        }
+        if ((startIndex < 0) || (startIndex >= destinationCommand.length)){
+            //throw new ArgumentOutOfRangeException("startIndex", "Для параметра startIndex должны выполняться условия: (startIndex >= 0) && (startIndex < destinationCommand.Length)");
+        }
+        if ((alignLength <= 0) || ((startIndex + alignLength) >= destinationCommand.length)){
+            //throw new ArgumentOutOfRangeException("alignLength", "Для параметра alignLength должны выполняться условия: (alignLength > 0) && (startIndex + alignLength < destinationCommand.Length)");
+        }
+        byte[] destinationArray = new byte[alignLength];
+        //Array.Copy(sourceAttribute, 0, destinationArray, 0, Math.Min(alignLength, sourceAttribute.length));
+        System.arraycopy(sourceAttribute, 0, destinationArray, 0, Math.min(alignLength, sourceAttribute.length));
+        //Array.Copy(destinationArray, 0, destinationCommand, startIndex, alignLength);
+        System.arraycopy(destinationArray, 0, destinationCommand, startIndex, alignLength);
+    }
 }

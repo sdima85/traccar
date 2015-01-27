@@ -143,7 +143,8 @@ public class TramigoProtocolDecoder extends BaseProtocolDecoder {
                 return null;
             }
             DateFormat dateFormat = new SimpleDateFormat("HH:mm MMM d yyyy");
-            position.setTime(dateFormat.parse(matcher.group(1) + " " + Calendar.getInstance().get(Calendar.YEAR)));
+            String str = matcher.group(1) + " " + Calendar.getInstance().get(Calendar.YEAR);
+            position.setTime(dateFormat.parse(str));
 
             position.setExtendedInfo(extendedInfo.toString());
             return position;

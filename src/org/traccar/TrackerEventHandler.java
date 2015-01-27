@@ -50,6 +50,7 @@ public class TrackerEventHandler extends IdleStateAwareChannelHandler {
             s.append("lat: ").append(position.getLatitude()).append(", ");
             s.append("lon: ").append(position.getLongitude());
             Log.info(s.toString());
+            Log.info(position.getExtendedInfo());            
         }
 
         // Write position to database

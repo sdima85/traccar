@@ -119,9 +119,22 @@ public class RoadKeyProtocolDecoder extends BaseProtocolDecoder {
             //sentence.charAt(0) == 2
             //sentence.charAt(16) == 3
             //identify();
+            
+            if (channel != null) {
+                channel.write("lt\r\n");
+            }
+        }
+        //lt - читать путевую точку
+        
+        if (sentence.startsWith("$PRKA")) {
+        }
+        if (sentence.startsWith("$PRKB")) {
+        }
+        if (sentence.startsWith("$PRKZ")) {
+        }
+        if (sentence.startsWith("$PRKERR")) {
         }
         
-        //lt - читать путевую точку
         
         if (!sentence.startsWith("$") && sentence.contains("$")) {
             int index = sentence.indexOf("$");
