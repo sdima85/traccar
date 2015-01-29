@@ -69,7 +69,12 @@ public class ExtendedInfoFormatter {
         else if(format.toLowerCase().trim().equals("quant")){
             StringBuilder result = new StringBuilder();
             for (Map.Entry<String, Object> entry : data.entrySet()) {
-                result.append(entry.getKey()).append("=").append(entry.getValue()).append(";");
+                if(entry.getValue() == null){
+                    result.append(entry.getKey()).append("=").append(";");
+                }
+                else {
+                    result.append(entry.getKey()).append("=").append(entry.getValue()).append(";");
+                }
             }            
             return result.toString();
         }

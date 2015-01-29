@@ -16,8 +16,6 @@ import org.jboss.netty.channel.ChannelHandlerContext;
 
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.database.DataManager;
-import org.traccar.helper.ChannelBufferTools;
-import org.traccar.helper.Crc;
 import org.traccar.helper.Log;
 import org.traccar.model.Device;
 import org.traccar.model.DeviceCommand;
@@ -163,22 +161,81 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         
         if("getparam".equals(cmdName) && (in(cmdId,0x1F,0x20,0x21,0x22,0x25,0x46,0x47,0x48,0x49,0x4A))){            
             sendData = EncodeConfigQuery(command, cmdId);
-            String msg = TeletrackProtocolA1.GetStringFromByteArray(sendData);
-            command.setCommand(msg);
         }
         else if("getparam".equals(cmdName) && (cmdId == 0x24)){ //DataGpsQuery
-            //EncodeDataGpsQuery
-            sendData = EncodeDataGpsQuery(command, cmdId);
-            String msg = TeletrackProtocolA1.GetStringFromByteArray(sendData);
-            command.setCommand(msg);
+            sendData = EncodeDataGpsQuery(command, cmdId);            
         }
-        
         else if("setparam".equals(cmdName)){
-            
+            switch(cmdId){
+//            MessageToDriver Сообщение водителю   10       
+                case 10:
+                    sendData = EncodeMessageToDriver(command, cmdId);
+                    break;
+//            SMSConfigSet Установка параметров для адресов SMS, E-MAIL и WEB SERVER (GPRS) сообщений = 11                  
+                case 11:
+                    sendData = EncodeSmsAddrConfigSet(command, cmdId);
+                    break;
+//            PhoneConfigSet Установка конфигурации телефонных номеров = 12.  
+                case 12:
+                    sendData = EncodePhoneNumberConfigSet(command, cmdId);
+                    break;
+//            EventConfigSet Установка конфигурации событий = 13.  
+                case 13:
+                    sendData = EncodeEventConfigSet(command, cmdId);
+                    break;    
+//            UniqueConfigSet Установка конфигурации уникальных параметров = 14.  
+                case 14:
+                    sendData = EncodeUniqueConfigSet(command, cmdId);
+                    break;       
+//            ZoneConfigSet Установка конфигурации контрольных зон = 15.  
+                case 15:
+                    sendData = EncodeZoneConfigSet(command, cmdId);
+                    break; 
+//            IdConfigSet Установка конфигурации идентификационных параметров = 17.  
+                case 17:
+                    sendData = EncodeIdConfigSet(command, cmdId);
+                    break; 
+//
+//            DataGpsAuto Автоматическая отправка GPS данных = 49.  
+                //case 49:
+                //    sendData = (command, cmdId);
+                //    break; 
+//            GprsBaseConfigSet Установка основных настроек GPRS = 50.  
+                case 50:
+                    sendData = EncodeGprsBaseConfigSet(command, cmdId);
+                    break; 
+//            GprsProviderConfigSet Установка настроек подключения к провайдеру GPRS  =54.  
+                case 54:
+                    sendData = EncodeGprsProviderConfigSet(command, cmdId);
+                    break; 
+//            GprsEmailConfigSet Установка настроек Email GPRS = 51.  
+                case 51:
+                    sendData = EncodeGprsEmailConfigSet(command, cmdId);
+                    break; 
+//            GprsSocketConfigSet Установка настроек Socket GPRS = 52.  
+                case 52:
+                    sendData = EncodeGprsSocketConfigSet(command, cmdId);
+                    break; 
+//            GprsFtpConfigSet Установка настроек FTP GPRS = 53.                  
+                case 53:
+                    sendData = EncodeGprsFtpConfigSet(command, cmdId);
+                    break; 
+                default:                    
+                    sendData = new byte[1];
+                    sendData[0] = 0;
+            }
         }
         
         if(sendData != null){
-            channel.write(ChannelBuffers.wrappedBuffer(sendData));
+            if(sendData.length > 1){
+                String msg = TeletrackProtocolA1.GetStringFromByteArray(sendData);
+                command.setCommand(msg);
+                channel.write(ChannelBuffers.wrappedBuffer(sendData));
+            }
+            else {
+                command.setCommand("unknown");
+            }
+            
             try{
                 getDataManager().addCommand(commands.get(0));
             }catch(SQLException e){
@@ -352,45 +409,38 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         byte[] destinationArray = new byte[0x90]; //144        
         buf.getBytes(0x10, destinationArray, 0, 0x90);
         
-        //Level1Converter
         int num2 = TeletrackProtocolA1.L1SymbolToValue(destinationArray[2]) << 2;
-        if (num2 != 0x88)
-        {
-            //throw new A1Exception(string.Format(
-            //"A1_6. Указанная длина {0} в пакете уровня LEVEL1 не соответствует ожиданиям - {1}.", num2, (byte) 0x88));
+        if (num2 != 0x88){
             return null;
         }
         //
         byte[] buffer2 = new byte[2];
-        //Array.Copy(destinationArray, 0, buffer2, 0, 2);
         System.arraycopy(destinationArray, 0, buffer2, 0, buffer2.length );
-        //Level1Converter
-        //L1BytesToString(buffer2);
-        //Level1Converter
+
         short num3 = TeletrackProtocolA1.L1SymbolToValue(destinationArray[7]);
         //Util
         byte num4 = TeletrackProtocolA1.CalculateLevel1CRC(destinationArray, 0, num2);
         if(num3 != num4){
-            //throw new A1Exception(string.Format(
             //"A1_4. CRC не совпадает. Значение указанное в пакете {0}, расчитанное - {1}.", num3, num4));
+            return null;
         }
         byte[] buffer3 = new byte[4];
-        //Array.Copy(destinationArray, 3, buffer3, 0, 4);
         System.arraycopy(destinationArray, 3, buffer3, 0, 4);
         byte[] buffer4 = new byte[0x88];
-        //Array.Copy(destinationArray, 8, buffer4, 0, 0x88);
         System.arraycopy(destinationArray, 8, buffer4, 0, 0x88);
         
         Object description = DecodeLevel3Message(TeletrackProtocolA1.L1Decode6BitTo8(buffer4));
         String ShortID = TeletrackProtocolA1.L1BytesToString(buffer3);
-        //description.Source = message;
         
         if (description instanceof DeviceCommand){
             byte[] Source = new byte[160]; //144        
             buf.getBytes(0, Source, 0, 160);
             ((DeviceCommand)description).setCommand(TeletrackProtocolA1.GetStringFromByteArray(Source));
         }
-
+        
+        if(deviceId == 0){
+            return null;
+        }
         if (channel != null) {
             ChannelBuffer response = getAck(false);
             channel.write(response);
@@ -537,7 +587,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
             //"A1_1. Длина пакета на уровне {0} не соответствует требованиям протокола. Ожидалось {1} байт, принято - {2}.", "LEVEL3", (byte) 0x66, command.Length));
         }
         byte commandID = command[0];
-        //Level4Converter.
+        //TeletrackProtocolA1.
         int messageID = TeletrackProtocolA1.L4ToInt16(command, 1); //BytesToUShort(command, 1);
         byte[] destinationArray = new byte[0x63];
         //Array.Copy(command, 3, destinationArray, 0, 0x63);
@@ -545,64 +595,63 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         
         
         switch (commandID){
-            case 0x15:
-            case 0x29:
-                result = GetSmsAddrConfig(destinationArray, commandID);
+            case 0x15: //21
+            case 0x29: //41
+                result = GetSmsAddrConfig(destinationArray, commandID, messageID);
                 break;
 
-            case 0x16:
-            case 0x2a:
-                result = GetPhoneNumberConfig(destinationArray, commandID);
+            case 0x16: //22
+            case 0x2a: //42
+                result = GetPhoneNumberConfig(destinationArray, commandID, messageID);
                 break;
-            case 0x0D://13: //EventConfigSet
-            case 0x17: //EventConfigConfirm ,
-            //EventConfigQuery = 0x21,
-            case 0x2b: //EventConfigAnswer
-                result = GetEventConfig(destinationArray, commandID);
-                break;
-
-            case 0x18:
-            case 0x2c:
-                result = GetUniqueConfig(destinationArray, commandID);
+            case 0x0D: //13
+            case 0x17: //23
+            case 0x2b: //43
+                result = GetEventConfig(destinationArray, commandID, messageID);
                 break;
 
-            case 0x19:
-                result = GetZoneConfigConfirm(destinationArray, commandID);
+            case 0x18: //24
+            case 0x2c: //44
+                result = GetUniqueConfig(destinationArray, commandID, messageID);
                 break;
 
-            case 0x1b:
-            case 0x2f:
-                result = GetIdConfig(destinationArray, commandID);                
+            case 0x19: //25
+                result = GetZoneConfigConfirm(destinationArray, commandID, messageID);
                 break;
 
-            case 0x2e:
-            case 0x31:
-                result = GetDataGps(destinationArray, commandID);
+            case 0x1b: //27
+            case 0x2f: //47
+                result = GetIdConfig(destinationArray, commandID, messageID);                
+                break;
+
+            case 0x2e: //46
+            case 0x31: //49
+                result = GetDataGps(destinationArray, commandID, messageID);
                 break;
 
             case 60:
             case 80:
-                result = GetGprsBaseConfig(destinationArray, commandID);
+                result = GetGprsBaseConfig(destinationArray, commandID, messageID);
                 break;
 
-            case 0x3d:
-            case 0x51:
-                result = GetGprsEmailConfig(destinationArray, commandID);
+            case 0x3d: //61
+            case 0x51: //81
+                result = GetGprsEmailConfig(destinationArray, commandID, messageID);
                 break;
 
-            case 0x3e:
-            case 0x52:
-                result = GetGprsSocketConfig(destinationArray, commandID);
+            case 0x3e: //62
+            case 0x52: //82
+                result = GetGprsSocketConfig(destinationArray, commandID, messageID);
                 break;
 
-            case 0x3f:
-            case 0x53:
-                result = GetGprsFtpConfig(destinationArray, commandID);
+            case 0x3f: //63
+            case 0x53: //83
+                result = GetGprsFtpConfig(destinationArray, commandID, messageID);
                 break;
 
-            case 0x40:
-            case 0x54:
-                result = GetGprsProviderConfig(destinationArray, commandID);
+            case 0x40: //64
+            case 0x54: //84
+                result = GetGprsProviderConfig(destinationArray, commandID, messageID);
                 break;
 
             default:
@@ -617,213 +666,182 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
     }
     
     
-    private DeviceCommand GetGprsBaseConfig(byte[] command, byte cmd){
+    private DeviceCommand GetGprsBaseConfig(byte[] command, byte cmd,int messageID){
         ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
         DeviceCommand config = new DeviceCommand();
         config.setDeviceId(deviceId);
         config.setImei(deviceImei);
         
-        extendedInfo.set("command", cmd);
+        extendedInfo.set("command", (cmd == 80 ? "getparam" : "setparam"));
+        extendedInfo.set("param", cmd);
+        extendedInfo.set("commandrow", messageID);
         
-        //return new GprsBaseConfig { 
-        //    Mode = Level4Converter.BytesToUShort(command, 0), 
-        extendedInfo.set("Mode", TeletrackProtocolA1.L4ToInt16(command, 0));
-        //    ApnServer = Level4Converter.BytesToString(command, 2, 0x19), 
-        extendedInfo.set("ApnServer", TeletrackProtocolA1.L4BytesToString(command, 2, 0x19));
-        //    ApnLogin = Level4Converter.BytesToString(command, 0x1b, 10), 
-        extendedInfo.set("ApnLogin", TeletrackProtocolA1.L4BytesToString(command, 0x1b, 10));
-        //    ApnPassword = Level4Converter.BytesToString(command, 0x25, 10), 
-        extendedInfo.set("ApnPassword", TeletrackProtocolA1.L4BytesToString(command, 0x25, 1));
-        //    DnsServer = Level4Converter.BytesToString(command, 0x2f, 0x10),
-        extendedInfo.set("DnsServer", TeletrackProtocolA1.L4BytesToString(command, 0x2f, 0x10));
-        //    DialNumber = Level4Converter.BytesToString(command, 0x3f, 11), 
-        extendedInfo.set("DialNumber", TeletrackProtocolA1.L4BytesToString(command, 0x3f, 11));
-        //    GprsLogin = Level4Converter.BytesToString(command, 0x4a, 10), 
-        extendedInfo.set("GprsLogin", TeletrackProtocolA1.L4BytesToString(command, 0x4a, 10));
-        //    GprsPassword = Level4Converter.BytesToString(command, 0x54, 10) 
-        extendedInfo.set("GprsPassword", TeletrackProtocolA1.L4BytesToString(command, 0x54, 10));
-        //};
+        extendedInfo.set("mode", TeletrackProtocolA1.L4ToInt16(command, 0));
+        extendedInfo.set("apnserver", TeletrackProtocolA1.L4BytesToString(command, 2, 0x19));
+        extendedInfo.set("apnlogin", TeletrackProtocolA1.L4BytesToString(command, 0x1b, 10));
+        extendedInfo.set("apnpassword", TeletrackProtocolA1.L4BytesToString(command, 0x25, 1));
+        extendedInfo.set("dnsserver", TeletrackProtocolA1.L4BytesToString(command, 0x2f, 0x10));
+        extendedInfo.set("dialnumber", TeletrackProtocolA1.L4BytesToString(command, 0x3f, 11));
+        extendedInfo.set("gprslogin", TeletrackProtocolA1.L4BytesToString(command, 0x4a, 10));
+        extendedInfo.set("gprspassword", TeletrackProtocolA1.L4BytesToString(command, 0x54, 10));
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;
     }
 
-    private DeviceCommand GetGprsEmailConfig(byte[] command, byte cmd){
+    private DeviceCommand GetGprsEmailConfig(byte[] command, byte cmd,int messageID){
         ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
         DeviceCommand config = new DeviceCommand();
         config.setDeviceId(deviceId);
         config.setImei(deviceImei);
         
-        extendedInfo.set("command", cmd);
+        extendedInfo.set("command", (cmd == 81 ? "getparam" : "setparam"));
+        extendedInfo.set("param", cmd);
+        extendedInfo.set("commandrow", messageID);
         
-        //return new GprsEmailConfig { 
-        //SmtpServer = Level4Converter.BytesToString(command, 0, 0x19), 
-        extendedInfo.set("SmtpServer", TeletrackProtocolA1.L4BytesToString(command, 0, 0x19));
-        //SmtpLogin = Level4Converter.BytesToString(command, 0x19, 10), 
-        extendedInfo.set("SmtpLogin", TeletrackProtocolA1.L4BytesToString(command, 0x19, 10));
-        //SmtpPassword = Level4Converter.BytesToString(command, 0x23, 10), 
-        extendedInfo.set("SmtpPassword", TeletrackProtocolA1.L4BytesToString(command, 0x23, 10));
-        //Pop3Server = Level4Converter.BytesToString(command, 0x2d, 0x19), 
-        extendedInfo.set("Pop3Server", TeletrackProtocolA1.L4BytesToString(command, 0x2d, 0x19));
-        //Pop3Login = Level4Converter.BytesToString(command, 70, 10), 
-        extendedInfo.set("Pop3Login", TeletrackProtocolA1.L4BytesToString(command, 70, 10));
-        //Pop3Password = Level4Converter.BytesToString(command, 80, 10) };
-        extendedInfo.set("Pop3Password", TeletrackProtocolA1.L4BytesToString(command, 80, 10));
-        
+        extendedInfo.set("smtpserver", TeletrackProtocolA1.L4BytesToString(command, 0, 0x19));
+        extendedInfo.set("smtplogin", TeletrackProtocolA1.L4BytesToString(command, 0x19, 10));
+        extendedInfo.set("smtppassword", TeletrackProtocolA1.L4BytesToString(command, 0x23, 10));
+        extendedInfo.set("pop3server", TeletrackProtocolA1.L4BytesToString(command, 0x2d, 0x19));
+        extendedInfo.set("pop3login", TeletrackProtocolA1.L4BytesToString(command, 70, 10));
+        extendedInfo.set("pop3password", TeletrackProtocolA1.L4BytesToString(command, 80, 10));
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;   
     }
 
-    private DeviceCommand GetGprsFtpConfig(byte[] command, byte cmd){
+    private DeviceCommand GetGprsFtpConfig(byte[] command, byte cmd,int messageID){
         ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
         DeviceCommand config = new DeviceCommand();
         config.setDeviceId(deviceId);
         config.setImei(deviceImei);
         
-        extendedInfo.set("command", cmd);
-        //return new GprsFtpConfig { 
-        //Server = Level4Converter.BytesToString(command, 0, 0x19), 
-        extendedInfo.set("Server", TeletrackProtocolA1.L4BytesToString(command, 0, 0x19));
-        //Login = Level4Converter.BytesToString(command, 0x19, 10), 
-        extendedInfo.set("Login", TeletrackProtocolA1.L4BytesToString(command, 0x19, 10));
-        //Password = Level4Converter.BytesToString(command, 0x23, 10), 
-        extendedInfo.set("Password", TeletrackProtocolA1.L4BytesToString(command, 0x23, 10));
-        //ConfigPath = Level4Converter.BytesToString(command, 0x2d, 20), 
-        extendedInfo.set("ConfigPath", TeletrackProtocolA1.L4BytesToString(command, 0x2d, 20));
-        //PutPath = Level4Converter.BytesToString(command, 0x41, 20) };
-        extendedInfo.set("PutPath", TeletrackProtocolA1.L4BytesToString(command, 0x41, 20));
+        extendedInfo.set("command", (cmd == 83 ? "getparam" : "setparam"));
+        extendedInfo.set("param", cmd);
+        extendedInfo.set("commandrow", messageID);
+        
+        extendedInfo.set("server", TeletrackProtocolA1.L4BytesToString(command, 0, 0x19));
+        extendedInfo.set("login", TeletrackProtocolA1.L4BytesToString(command, 0x19, 10));
+        extendedInfo.set("password", TeletrackProtocolA1.L4BytesToString(command, 0x23, 10));
+        extendedInfo.set("configpath", TeletrackProtocolA1.L4BytesToString(command, 0x2d, 20));
+        extendedInfo.set("putpath", TeletrackProtocolA1.L4BytesToString(command, 0x41, 20));
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;  
     }
 
-    private DeviceCommand GetGprsProviderConfig(byte[] command, byte cmd) {
+    private DeviceCommand GetGprsProviderConfig(byte[] command, byte cmd, int messageID) {
         ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
         DeviceCommand config = new DeviceCommand();
         config.setDeviceId(deviceId);
         config.setImei(deviceImei);
         
-        extendedInfo.set("command", cmd);
-        //return new GprsProviderConfig { 
-        //InitString = Level4Converter.BytesToString(command, 0, 50), 
-        extendedInfo.set("InitString", TeletrackProtocolA1.L4BytesToString(command, 0, 50));
-        //Domain = Level4Converter.BytesToString(command, 50, 0x19) };
-        extendedInfo.set("Domain", TeletrackProtocolA1.L4BytesToString(command, 50, 0x19));
+        extendedInfo.set("command", (cmd == 84 ? "getparam" : "setparam"));
+        extendedInfo.set("param", cmd);
+        extendedInfo.set("commandrow", messageID);
+        
+        extendedInfo.set("initstring", TeletrackProtocolA1.L4BytesToString(command, 0, 50));
+        extendedInfo.set("domain", TeletrackProtocolA1.L4BytesToString(command, 50, 0x19));
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config; 
     }
 
-    private DeviceCommand GetGprsSocketConfig(byte[] command, byte cmd){
+    private DeviceCommand GetGprsSocketConfig(byte[] command, byte cmd, int messageID){
         ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
         DeviceCommand config = new DeviceCommand();
         config.setDeviceId(deviceId);
         config.setImei(deviceImei);
         
-        extendedInfo.set("command", cmd);
-        //return new GprsSocketConfig { 
-        //Server = Level4Converter.BytesToString(command, 0, 20), 
-        extendedInfo.set("Server", TeletrackProtocolA1.L4BytesToString(command, 0, 20));
-        //Port = Level4Converter.BytesToUShort(command, 20) };
-        extendedInfo.set("Port", TeletrackProtocolA1.L4ToInt16(command, 20));
+        extendedInfo.set("command", (cmd == 82 ? "getparam" : "setparam"));
+        extendedInfo.set("param", cmd);
+        extendedInfo.set("commandrow", messageID);
+        
+        extendedInfo.set("server", TeletrackProtocolA1.L4BytesToString(command, 0, 20));
+        extendedInfo.set("port", TeletrackProtocolA1.L4ToInt16(command, 20));
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;  
     }
 
-    private DeviceCommand GetPhoneNumberConfig(byte[] command, byte cmd){
+    private DeviceCommand GetPhoneNumberConfig(byte[] command, byte cmd, int messageID){
         ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
         DeviceCommand config = new DeviceCommand();
         config.setDeviceId(deviceId);
         config.setImei(deviceImei);
         
-        extendedInfo.set("command", cmd);
+        extendedInfo.set("command", (cmd == 42 ? "getparam" : "setparam"));
+        extendedInfo.set("param", cmd);
+        extendedInfo.set("commandrow", messageID);
         
-        //return new PhoneNumberConfig { 
-        //NumberAccept1 = Level4Converter.BytesToTelNumber(command, 0, 11),
-        extendedInfo.set("NumberAccept1", TeletrackProtocolA1.L4BytesToTelNumber(command, 0, 11));
-        //NumberAccept2 = Level4Converter.BytesToTelNumber(command, 11, 11), 
-        extendedInfo.set("NumberAccept2", TeletrackProtocolA1.L4BytesToTelNumber(command, 11, 11));
-        //NumberAccept3 = Level4Converter.BytesToTelNumber(command, 0x16, 11), 
-        extendedInfo.set("NumberAccept3", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x16, 11));
-        //NumberDspt = Level4Converter.BytesToTelNumber(command, 0x21, 11), 
-        extendedInfo.set("NumberDspt", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x21, 11));
-        //Name1 = Level4Converter.BytesToString(command, 0x2d, 8), 
-        extendedInfo.set("Name1", TeletrackProtocolA1.L4BytesToString(command, 0x2d, 8));
-        //Name2 = Level4Converter.BytesToString(command, 0x35, 8), 
-        extendedInfo.set("Name2", TeletrackProtocolA1.L4BytesToString(command, 0x35, 8));
-        //Name3 = Level4Converter.BytesToString(command, 0x3d, 8), 
-        extendedInfo.set("Name3", TeletrackProtocolA1.L4BytesToString(command, 0x3d, 8));
-        //NumberSOS = Level4Converter.BytesToTelNumber(command, 0x45, 11) };
-        extendedInfo.set("NumberSOS", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x45, 11));
+        extendedInfo.set("numberaccept1", TeletrackProtocolA1.L4BytesToTelNumber(command, 0, 11));
+        extendedInfo.set("numberaccept2", TeletrackProtocolA1.L4BytesToTelNumber(command, 11, 11));
+        extendedInfo.set("numberaccept3", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x16, 11));
+        extendedInfo.set("numberdspt", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x21, 11));
+        extendedInfo.set("name1", TeletrackProtocolA1.L4BytesToString(command, 0x2d, 8));
+        extendedInfo.set("name2", TeletrackProtocolA1.L4BytesToString(command, 0x35, 8));
+        extendedInfo.set("name3", TeletrackProtocolA1.L4BytesToString(command, 0x3d, 8));
+        extendedInfo.set("numberSOS", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x45, 11));
             
-        //config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+        config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;  
     }
 
-    private DeviceCommand GetSmsAddrConfig(byte[] command, byte cmd){
+    private DeviceCommand GetSmsAddrConfig(byte[] command, byte cmd, int messageID){
         ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
         DeviceCommand config = new DeviceCommand();
         config.setDeviceId(deviceId);
         config.setImei(deviceImei);
         
-        extendedInfo.set("command", cmd);
-        //return new SmsAddrConfig { 
-        //DsptEmailGprs = Level4Converter.BytesToString(command, 0, 30), 
-        extendedInfo.set("DsptEmailGprs", TeletrackProtocolA1.L4BytesToString(command, 0, 30));
-        //DsptEmailSMS = Level4Converter.BytesToString(command, 30, 14), 
-        extendedInfo.set("DsptEmailSMS", TeletrackProtocolA1.L4BytesToTelNumber(command, 30, 14));
-        //SmsCentre = Level4Converter.BytesToTelNumber(command, 0x2c, 11), 
-        extendedInfo.set("SmsCentre", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x2c, 11));
-        //SmsDspt = Level4Converter.BytesToTelNumber(command, 0x37, 11), 
-        extendedInfo.set("SmsDspt", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x37, 11));
-        //SmsEmailGate = Level4Converter.BytesToTelNumber(command, 0x42, 11) };
-        extendedInfo.set("SmsEmailGate", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x42, 11));
+        extendedInfo.set("command", (cmd == 41 ? "getparam" : "setparam"));
+        extendedInfo.set("param", cmd);
+        extendedInfo.set("commandrow", messageID);
+        
+        extendedInfo.set("dsptemailgprs", TeletrackProtocolA1.L4BytesToString(command, 0, 30));
+        extendedInfo.set("dsptemailsms", TeletrackProtocolA1.L4BytesToTelNumber(command, 30, 14));
+        extendedInfo.set("smscentre", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x2c, 11));
+        extendedInfo.set("smsdspt", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x37, 11));
+        extendedInfo.set("smsemailgate", TeletrackProtocolA1.L4BytesToTelNumber(command, 0x42, 11));
             
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;    
     }
 
-    private DeviceCommand GetUniqueConfig(byte[] command, byte cmd){
+    private DeviceCommand GetUniqueConfig(byte[] command, byte cmd, int messageID){
         ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
         DeviceCommand config = new DeviceCommand();
         config.setDeviceId(deviceId);
         config.setImei(deviceImei);
         
-        extendedInfo.set("command", cmd);
-        //return new UniqueConfig { 
-        //DispatcherID = Level4Converter.BytesToString(command, 0, 4), 
-        extendedInfo.set("DispatcherID", TeletrackProtocolA1.L4BytesToString(command, 0, 4));
-        //Password = Level4Converter.BytesToString(command, 4, 8), 
-        extendedInfo.set("Password", TeletrackProtocolA1.L4BytesToString(command, 4, 8));
-        //TmpPassword = Level4Converter.BytesToString(command, 12, 8) };
-        extendedInfo.set("TmpPassword", TeletrackProtocolA1.L4BytesToString(command, 12, 8));
+        extendedInfo.set("command", (cmd == 44 ? "getparam" : "setparam"));
+        extendedInfo.set("param", cmd);
+        extendedInfo.set("commandrow", messageID);
+        
+        extendedInfo.set("dispatcherid", TeletrackProtocolA1.L4BytesToString(command, 0, 4));
+        extendedInfo.set("password", TeletrackProtocolA1.L4BytesToString(command, 4, 8));
+        extendedInfo.set("tmppassword", TeletrackProtocolA1.L4BytesToString(command, 12, 8));
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;   
     }
 
-    private DeviceCommand GetZoneConfigConfirm(byte[] command, byte cmd){
+    private DeviceCommand GetZoneConfigConfirm(byte[] command, byte cmd, int messageID){
         ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
         DeviceCommand config = new DeviceCommand();
         config.setDeviceId(deviceId);
         config.setImei(deviceImei);
         
-        extendedInfo.set("command", cmd);        
-        //return new ZoneConfigConfirm { 
-        //ZoneMsgID = Level4Converter.BytesToInt(command, 0), 
-        extendedInfo.set("ZoneMsgID", TeletrackProtocolA1.L4BytesToInt(command, 0));
-        //ZoneState = command[4], 
-        extendedInfo.set("ZoneState", command[4]);
-        //Result = command[5] };
-        extendedInfo.set("Result", command[5]);
+        extendedInfo.set("command", "setparam");
+        extendedInfo.set("param", cmd);
+        extendedInfo.set("commandrow", messageID);     
+        extendedInfo.set("zonemsgid", TeletrackProtocolA1.L4BytesToInt(command, 0));
+        extendedInfo.set("zonestate", command[4]);
+        extendedInfo.set("result", command[5]);
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config; 
     }
         
-    private List<Position> GetDataGps(byte[] command, byte cmd) {
-            //DataGpsAnswer answer = new DataGpsAnswer();
+    private List<Position> GetDataGps(byte[] command, byte cmd, int messageID) {
         List<Position> positions = new LinkedList<Position>();
         short startIndex = 0;
         int WhatWrite = TeletrackProtocolA1.L4ToInt16(command, startIndex);
@@ -833,8 +851,10 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         for (int i = 0; i < num2; i++){
                 //DataGps data = new DataGps();
             ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
-            extendedInfo.set("WhatWrite", WhatWrite);
-            extendedInfo.set("command", cmd);
+            extendedInfo.set("whatwrite", WhatWrite);
+            extendedInfo.set("command", "getparam");
+            extendedInfo.set("param", cmd);
+            extendedInfo.set("commandrow", messageID);
             
             Position position = new Position();
             position.setDeviceId(deviceId);
@@ -880,12 +900,12 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
                 startIndex = (short) (startIndex + 1);
             }
             if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte) 6)){
-                extendedInfo.set("logId", TeletrackProtocolA1.L4BytesToInt(command, startIndex));
+                extendedInfo.set("logid", TeletrackProtocolA1.L4BytesToInt(command, startIndex));
                 startIndex = (short) (startIndex + 4);
             }
             if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte) 7)){
                 Flags = command[startIndex];
-                extendedInfo.set("Flags", Flags);
+                extendedInfo.set("flags", Flags);
                 startIndex = (short) (startIndex + 1);
             }
             if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte) 8)){
@@ -938,58 +958,52 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
     /*
     * Декодирование сообщения кофигурации событий 13, 23, 43 
     */
-    private DeviceCommand GetEventConfig(byte[] command, byte cmd){
+    private DeviceCommand GetEventConfig(byte[] command, byte cmd, int messageID){
         ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
         DeviceCommand config = new DeviceCommand();
         config.setDeviceId(deviceId);
         config.setImei(deviceImei);
         
-        extendedInfo.set("command", cmd);
-        //extendedInfo.set("commandName", );
+        extendedInfo.set("command", (cmd == 43 ? "getparam" : "setparam"));
+        extendedInfo.set("param", cmd);
+        extendedInfo.set("commandrow", messageID);
         
-        //extendedInfo.set("codec", codec);
-        extendedInfo.set("SpeedChange", command[0] & 0xFF);        
-        extendedInfo.set("CourseBend", TeletrackProtocolA1.L4ToInt16(command, 1));
-        extendedInfo.set("Distance1", TeletrackProtocolA1.L4ToInt16(command, 3));
-        extendedInfo.set("Distance2", TeletrackProtocolA1.L4ToInt16(command, 5));
+        extendedInfo.set("speedchange", command[0] & 0xFF);        
+        extendedInfo.set("coursebend", TeletrackProtocolA1.L4ToInt16(command, 1));
+        extendedInfo.set("distance1", TeletrackProtocolA1.L4ToInt16(command, 3));
+        extendedInfo.set("distance2", TeletrackProtocolA1.L4ToInt16(command, 5));
         
         
         for (int i = 0; i < 0x20; i++){
-            extendedInfo.set("EventMask"+i, TeletrackProtocolA1.L4ToInt16(command, (i << 1) + 7));
+            extendedInfo.set("eventmask"+i, TeletrackProtocolA1.L4ToInt16(command, (i << 1) + 7));
         }
         
-        extendedInfo.set("MinSpeed", TeletrackProtocolA1.L4ToInt16(command, 0x47));
-        extendedInfo.set("Timer1", TeletrackProtocolA1.L4ToInt16(command, 0x49));
-        extendedInfo.set("Timer2", TeletrackProtocolA1.L4ToInt16(command, 0x4b));
+        extendedInfo.set("minspeed", TeletrackProtocolA1.L4ToInt16(command, 0x47));
+        extendedInfo.set("timer1", TeletrackProtocolA1.L4ToInt16(command, 0x49));
+        extendedInfo.set("timer2", TeletrackProtocolA1.L4ToInt16(command, 0x4b));
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;
     }
 
-    private DeviceCommand GetIdConfig(byte[] command, byte cmd) {
+    private DeviceCommand GetIdConfig(byte[] command, byte cmd, int messageID) {
         ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
         DeviceCommand config = new DeviceCommand();
         config.setDeviceId(deviceId);
         config.setImei(deviceImei);
         
-        extendedInfo.set("command", cmd);
-        //return new IdConfig { 
-        //DevIdShort = Level4Converter.BytesToString(command, 0, 4), 
-        extendedInfo.set("DevIdShort", TeletrackProtocolA1.L4BytesToString(command,0, 4));
-        //DevIdLong = Level4Converter.BytesToString(command, 4, 0x10), 
-        extendedInfo.set("DevIdLong", TeletrackProtocolA1.L4BytesToString(command,4, 0x10));
-        //ModuleIdGps = Level4Converter.BytesToString(command, 20, 4), 
-        extendedInfo.set("ModuleIdGps", TeletrackProtocolA1.L4BytesToString(command, 20, 4));
-        //ModuleIdGsm = Level4Converter.BytesToString(command, 0x18, 4), 
-        extendedInfo.set("ModuleIdGsm", TeletrackProtocolA1.L4BytesToString(command, 0x18, 4));
-        //ModuleIdRf = Level4Converter.BytesToString(command, 0x20, 4), 
-        extendedInfo.set("ModuleIdRf", TeletrackProtocolA1.L4BytesToString(command, 0x20, 4));
-        //ModuleIdSs = Level4Converter.BytesToString(command, 0x24, 4), 
-        extendedInfo.set("ModuleIdSs", TeletrackProtocolA1.L4BytesToString(command, 0x24, 4));
-        //VerProtocolLong = Level4Converter.BytesToString(command, 40, 0x10), 
-        extendedInfo.set("VerProtocolLong", TeletrackProtocolA1.L4BytesToString(command, 40, 0x10));
-        //VerProtocolShort = Level4Converter.BytesToString(command, 0x38, 2) };
-        extendedInfo.set("VerProtocolShort", TeletrackProtocolA1.L4BytesToString(command, 0x38, 2));
+        extendedInfo.set("command", (cmd == 47 ? "getparam" : "setparam"));
+        extendedInfo.set("param", cmd);
+        extendedInfo.set("commandrow", messageID);
+        
+        extendedInfo.set("devidshort", TeletrackProtocolA1.L4BytesToString(command,0, 4));
+        extendedInfo.set("devidlong", TeletrackProtocolA1.L4BytesToString(command,4, 0x10));
+        extendedInfo.set("moduleidgps", TeletrackProtocolA1.L4BytesToString(command, 20, 4));
+        extendedInfo.set("moduleidgsm", TeletrackProtocolA1.L4BytesToString(command, 0x18, 4));
+        extendedInfo.set("moduleidrf", TeletrackProtocolA1.L4BytesToString(command, 0x20, 4));
+        extendedInfo.set("moduleidss", TeletrackProtocolA1.L4BytesToString(command, 0x24, 4));
+        extendedInfo.set("verprotocollong", TeletrackProtocolA1.L4BytesToString(command, 40, 0x10));
+        extendedInfo.set("verprotocolshort", TeletrackProtocolA1.L4BytesToString(command, 0x38, 2));
         
         config.setData(extendedInfo.getStyle(getDataManager().getStyleInfo()));
         return config;
@@ -1024,7 +1038,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         //14 - интервал по высоте 15 - интервал по направлению 
         //16 - интервал по индексам 17 - флаги 
         //CheckMask = 1, 
-        int CheckMask = Integer.parseInt(this.getDataManager().getQuantParametr(data,"CheckMask"));
+        int CheckMask = Integer.parseInt(this.getDataManager().getQuantParametr(data,"checkcask"));
         
         //CommandID = CommandDescriptor.DataGpsQuery, 
         
@@ -1032,15 +1046,42 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         //Расшифровка номеров бит маски: 0 - время 1 - широта 2 - долгота 
         //3 - высота 4 - направление 5 - скорость 6 - индекс лога (всегда равен 1) 
         //7 - флаги 8 - события 9 - датчики 10 - счетчики  
-        //WhatSend = 0x3ff, 
+        int WhatSend = 0x3ff;
         
-        //MaxSmsNumber = 1, 
-        //StartTime = 0, Начало интервала времени, UnixTime 
-        //EndTime=0, Конец интервала времени, UnixTime  
-        //EndTime = 0, 
-        //LastRecords = 0x65 };    
+        int MaxSmsNumber = 1;
+        int StartTime = 0;// Начало интервала времени, UnixTime 
+        int EndTime = 0;// Конец интервала времени, UnixTime  
+            
+        int Events = 0;
         
-        String str;
+        //LastRecords = 0x65 }; //101
+        int LastRecords = Integer.parseInt(this.getDataManager().getQuantParametr(data,"lastrecords"));
+        int LastTimes = 0;
+        int LastMeters = 0;
+        
+        byte StartSpeed = 0;
+        byte EndSpeed = 0;
+        
+        int StartLatitude = 0;
+        int StartLongitude = 0;
+        int EndLatitude = 0;
+        int EndLongitude = 0;
+        byte StartAltitude = 0;
+        byte EndAltitude = 0;
+        byte StartDirection = 0;
+        byte EndDirection = 0;
+        
+        int StartLogId = 0;
+        int EndLogId = 0;
+        byte StartFlags = 0;
+        byte EndFlags = 0;
+        
+        int LogId1 = 0;
+        int LogId2 = 0;
+        int LogId3 = 0;
+        int LogId4 = 0;
+        int LogId5 = 0;
+        
         if (query == null){
             //throw new ArgumentNullException("query", "Не передан запрос GPS данных query");
             return null;
@@ -1052,85 +1093,484 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         
         int id = (int) Integer.valueOf(query.getId().toString());
         byte[] destinationCommand = TeletrackProtocolA1.GetCommandLevel3Template((byte) commandID, id);
-        //byte[] destinationCommand = TeletrackProtocolA1.GetCommandLevel3Template((byte) query.CommandID, query.MessageID);
         int startIndex = 3;
         TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UIntToBytes(CheckMask), destinationCommand, startIndex, 4);
         startIndex += 4;
-        /*Util.FillCommandAttribute(Level4Converter.UIntToBytes(query.Events), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UIntToBytes(Events), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(Level4Converter.UIntToBytes(query.LastRecords), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UIntToBytes(LastRecords), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(Level4Converter.UIntToBytes(query.LastTimes), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UIntToBytes(LastTimes), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(Level4Converter.UIntToBytes(query.LastMeters), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UIntToBytes(LastMeters), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(Level4Converter.UIntToBytes(query.MaxSmsNumber), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UIntToBytes(MaxSmsNumber), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(Level4Converter.UIntToBytes(query.WhatSend), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UIntToBytes(WhatSend), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.StartTime), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4IntToBytes(StartTime), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(new byte[] { query.StartSpeed }, destinationCommand, startIndex, 1);
+        TeletrackProtocolA1.FillCommandAttribute(new byte[] { StartSpeed }, destinationCommand, startIndex, 1);
         startIndex++;
-        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.StartLatitude / 10), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4IntToBytes(StartLatitude / 10), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.StartLongitude / 10), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4IntToBytes(StartLongitude / 10), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(new byte[] { query.StartAltitude }, destinationCommand, startIndex, 1);
+        TeletrackProtocolA1.FillCommandAttribute(new byte[] { StartAltitude }, destinationCommand, startIndex, 1);
         startIndex++;
-        Util.FillCommandAttribute(new byte[] { query.StartDirection }, destinationCommand, startIndex, 1);
+        TeletrackProtocolA1.FillCommandAttribute(new byte[] { StartDirection }, destinationCommand, startIndex, 1);
         startIndex++;
-        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.StartLogId), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4IntToBytes(StartLogId), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(new byte[] { query.StartFlags }, destinationCommand, startIndex, 1);
+        TeletrackProtocolA1.FillCommandAttribute(new byte[] { StartFlags }, destinationCommand, startIndex, 1);
         startIndex++;
-        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.EndTime), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4IntToBytes(EndTime), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(new byte[] { query.EndSpeed }, destinationCommand, startIndex, 1);
+        TeletrackProtocolA1.FillCommandAttribute(new byte[] { EndSpeed }, destinationCommand, startIndex, 1);
         startIndex++;
-        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.EndLatitude / 10), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4IntToBytes(EndLatitude / 10), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.EndLongitude / 10), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4IntToBytes(EndLongitude / 10), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(new byte[] { query.EndAltitude }, destinationCommand, startIndex, 1);
+        TeletrackProtocolA1.FillCommandAttribute(new byte[] { EndAltitude }, destinationCommand, startIndex, 1);
         startIndex++;
-        Util.FillCommandAttribute(new byte[] { query.EndDirection }, destinationCommand, startIndex, 1);
+        TeletrackProtocolA1.FillCommandAttribute(new byte[] { EndDirection }, destinationCommand, startIndex, 1);
         startIndex++;
-        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.EndLogId), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4IntToBytes(EndLogId), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(new byte[] { query.EndFlags }, destinationCommand, startIndex, 1);
+        TeletrackProtocolA1.FillCommandAttribute(new byte[] { EndFlags }, destinationCommand, startIndex, 1);
         startIndex++;
-        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.LogId1), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4IntToBytes(LogId1), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.LogId2), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4IntToBytes(LogId2), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.LogId3), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4IntToBytes(LogId3), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.LogId4), destinationCommand, startIndex, 4);
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4IntToBytes(LogId4), destinationCommand, startIndex, 4);
         startIndex += 4;
-        Util.FillCommandAttribute(Level4Converter.IntToBytes(query.LogId5), destinationCommand, startIndex, 4);
-        query.Source = GetMessageLevel0(GetMessageLevel1(destinationCommand, query.ShortID), "");
-        query.Message = Util.GetStringFromByteArray(query.Source);
-        return query.Message;
-                */
-        return null;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4IntToBytes(LogId5), destinationCommand, startIndex, 4);
+        
+        return TeletrackProtocolA1.GetMessageLevel0(TeletrackProtocolA1.GetMessageLevel1(destinationCommand, deviceImei), "");        
     }
     
     private byte[] EncodeConfigQuery(DeviceCommand query, int commandID){
         if (query == null){
             //throw new ArgumentNullException("query", "Не передан запрос кофигурации телефонных номеров");
             return null;
-        }
-        
-        //int CommandID = 0x21;//  //CommandDescriptor.EventConfigQuery;
+        }        
         int id = (int) Integer.valueOf(query.getId().toString());
         byte[] buffer = TeletrackProtocolA1.GetCommandLevel3Template((byte) commandID, id);
         return TeletrackProtocolA1.GetMessageLevel0(TeletrackProtocolA1.GetMessageLevel1(buffer, deviceImei), "");
-        //String Message = TeletrackProtocolA1.GetStringFromByteArray(Source);
-        //return Message;
-        
     }
     
+    public byte[] EncodeMessageToDriver(DeviceCommand query, int commandID){
+        if (query == null) {
+            //throw new ArgumentNullException("messageToDriver", "Не передано сообщение водителю messageToDriver");
+            return null;
+        }
+
+        String data = query.getData();
+        String messageToDriver = this.getDataManager().getQuantParametr(data,"value");
+        int id = (int) Integer.valueOf(query.getId().toString());
+        byte[] destinationCommand = TeletrackProtocolA1.GetCommandLevel3Template((byte) commandID, id);
+        int startIndex = 3;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(messageToDriver, 0x4f), destinationCommand, startIndex, 80);
+
+        return TeletrackProtocolA1.GetMessageLevel0(TeletrackProtocolA1.GetMessageLevel1(destinationCommand, deviceImei), "");
+    }
+    
+    public byte[] EncodeSmsAddrConfigSet(DeviceCommand query, int commandID){
+        if (query == null){
+            //throw new ArgumentNullException("smsAddrConfig", "Не передана конфигурация SMS адресов smsAddrConfig");
+            return null;
+        }
+        String data = query.getData();
+        String DsptEmailGprs = this.getDataManager().getQuantParametr(data,"dsptemailgprs");
+        String DsptEmailSMS = this.getDataManager().getQuantParametr(data,"dsptemailsms");
+        String SmsCentre = this.getDataManager().getQuantParametr(data,"smscentre");
+        String SmsDspt = this.getDataManager().getQuantParametr(data,"smsdspt");
+        String SmsEmailGate = this.getDataManager().getQuantParametr(data,"smsemailgate");
+        
+        int id = (int) Integer.valueOf(query.getId().toString());
+        byte[] destinationCommand = TeletrackProtocolA1.GetCommandLevel3Template((byte) commandID, id);
+        int startIndex = 3;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(DsptEmailGprs, 30), destinationCommand, startIndex, 30);
+        startIndex += 30;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(DsptEmailSMS, 14), destinationCommand, startIndex, 14);
+        startIndex += 14;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4TelNumberToBytes(SmsCentre, 11), destinationCommand, startIndex, 11);
+        startIndex += 11;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4TelNumberToBytes(SmsDspt, 11), destinationCommand, startIndex, 11);
+        startIndex += 11;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4TelNumberToBytes(SmsEmailGate, 11), destinationCommand, startIndex, 11);
+        
+        return TeletrackProtocolA1.GetMessageLevel0(TeletrackProtocolA1.GetMessageLevel1(destinationCommand, deviceImei), "");
+    }
+    
+    public byte[] EncodePhoneNumberConfigSet(DeviceCommand query, int commandID){
+        if (query == null){
+            //throw new ArgumentNullException("smsAddrConfig", "Не передана конфигурация SMS адресов smsAddrConfig");
+            return null;
+        }
+        String data = query.getData();
+        String NumberAccept1 = this.getDataManager().getQuantParametr(data,"numberaccept1");
+        String NumberAccept2 = this.getDataManager().getQuantParametr(data,"numberaccept2");
+        String NumberAccept3 = this.getDataManager().getQuantParametr(data,"numberaccept3");
+        String NumberDspt = this.getDataManager().getQuantParametr(data,"numberdspt");
+        String Name1 = this.getDataManager().getQuantParametr(data,"name1");
+        String Name2 = this.getDataManager().getQuantParametr(data,"name2");
+        String Name3 = this.getDataManager().getQuantParametr(data,"name3");
+        String NumberSOS = this.getDataManager().getQuantParametr(data,"numbersos");
+        
+        int id = (int) Integer.valueOf(query.getId().toString());
+        byte[] destinationCommand = TeletrackProtocolA1.GetCommandLevel3Template((byte) commandID, id);
+        int startIndex = 3;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4TelNumberToBytes(NumberAccept1, 11), destinationCommand, startIndex, 11);
+        startIndex += 11;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4TelNumberToBytes(NumberAccept2, 11), destinationCommand, startIndex, 11);
+        startIndex += 11;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4TelNumberToBytes(NumberAccept3, 11), destinationCommand, startIndex, 11);
+        startIndex += 11;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4TelNumberToBytes(NumberDspt, 11), destinationCommand, startIndex, 11);
+        startIndex += 11;
+        TeletrackProtocolA1.FillCommandAttribute(new byte[1], destinationCommand, startIndex, 1);
+        startIndex++;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(Name1, 8), destinationCommand, startIndex, 8);
+        startIndex += 8;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(Name2, 8), destinationCommand, startIndex, 8);
+        startIndex += 8;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(Name3, 8), destinationCommand, startIndex, 8);
+        startIndex += 8;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4TelNumberToBytes(NumberSOS, 11), destinationCommand, startIndex, 11);
+        
+        return TeletrackProtocolA1.GetMessageLevel0(TeletrackProtocolA1.GetMessageLevel1(destinationCommand, deviceImei), "");
+    }
+        
+    public byte[] EncodeEventConfigSet(DeviceCommand query, int commandID){
+        if (query == null){
+            //throw new ArgumentNullException("phoneNumberConfig", "Не передана конфигурация событий eventConfig");
+            return null;
+        }
+        String data = query.getData();
+        byte SpeedChange = (byte)Integer.parseInt(this.getDataManager().getQuantParametr(data,"speedchange"));
+        int CourseBend = Integer.parseInt(this.getDataManager().getQuantParametr(data,"coursebend"));
+        int Distance1 = Integer.parseInt(this.getDataManager().getQuantParametr(data,"distance1"));
+        int Distance2 = Integer.parseInt(this.getDataManager().getQuantParametr(data,"distance2"));
+        int MinSpeed = Integer.parseInt(this.getDataManager().getQuantParametr(data,"minspeed"));
+        int Timer1 = Integer.parseInt(this.getDataManager().getQuantParametr(data,"timer1"));
+        int Timer2 = Integer.parseInt(this.getDataManager().getQuantParametr(data,"timer2"));
+        
+        int id = (int) Integer.valueOf(query.getId().toString());
+        byte[] destinationCommand = TeletrackProtocolA1.GetCommandLevel3Template((byte) commandID, id);
+        int startIndex = 3;
+        TeletrackProtocolA1.FillCommandAttribute(new byte[] {SpeedChange}, destinationCommand, startIndex, 1);
+        startIndex++;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UShortToBytes(CourseBend), destinationCommand, startIndex, 2);
+        startIndex += 2;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UShortToBytes(Distance1), destinationCommand, startIndex, 2);
+        startIndex += 2;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UShortToBytes(Distance2), destinationCommand, startIndex, 2);
+        startIndex += 2;
+        for (int i = 0; i < 0x20; i++){
+            int EventMask = Integer.parseInt(this.getDataManager().getQuantParametr(data,"eventmask"+i));
+            
+            TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UShortToBytes(EventMask), destinationCommand, startIndex, 2);
+            startIndex += 2;
+        }
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UShortToBytes(MinSpeed), destinationCommand, startIndex, 2);
+        startIndex += 2;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UShortToBytes(Timer1), destinationCommand, startIndex, 2);
+        startIndex += 2;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UShortToBytes(Timer2), destinationCommand, startIndex, 2);
+        startIndex += 2;
+        TeletrackProtocolA1.FillCommandAttribute(new byte[2], destinationCommand, startIndex, 2);
+
+        return TeletrackProtocolA1.GetMessageLevel0(TeletrackProtocolA1.GetMessageLevel1(destinationCommand, deviceImei), "");
+    }
+    
+    public byte[] EncodeUniqueConfigSet(DeviceCommand query, int commandID) {
+        if (query == null){
+            //throw new ArgumentNullException("phoneNumberConfig", "Не передана конфигурация событий eventConfig");
+            return null;
+        }
+        String data = query.getData();
+        String DispatcherID = this.getDataManager().getQuantParametr(data,"dispatcherid");
+        String Password = this.getDataManager().getQuantParametr(data,"password");
+        String TmpPassword = this.getDataManager().getQuantParametr(data,"tmppassword");
+        
+        int id = (int) Integer.valueOf(query.getId().toString());
+        byte[] destinationCommand = TeletrackProtocolA1.GetCommandLevel3Template((byte) commandID, id);
+        
+        int startIndex = 3;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(DispatcherID, 4), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(Password, 8), destinationCommand, startIndex, 8);
+        startIndex += 8;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(TmpPassword, 8), destinationCommand, startIndex, 8);
+       
+        return TeletrackProtocolA1.GetMessageLevel0(TeletrackProtocolA1.GetMessageLevel1(destinationCommand, deviceImei), "");
+    }
+    
+    public byte[] EncodeZoneConfigSet(DeviceCommand query, int commandID){
+        /*
+        string str;
+        if (zoneConfig == null)
+        {
+            throw new ArgumentNullException("zoneConfig", "Не передана конфигурация контрольных зон zoneConfig");
+        }
+        if (!zoneConfig.Validate(out str))
+        {
+            throw new A1Exception(string.Format("A1_7. Не пройдена проверка правильности заполнения атрубутов сущности {0}: {1}.", zoneConfig.GetType().Name, str));
+        }
+        List<ZonePoint> list = new List<ZonePoint>();
+        List<byte> list2 = new List<byte>();
+        zoneConfig.CommandID = CommandDescriptor.ZoneConfigSet;
+        
+        
+        byte[] buffer = GetCommandLevel3Template((byte) zoneConfig.CommandID, zoneConfig.MessageID);
+        int index = 3;
+        buffer[index] = 1;
+        index++;
+        buffer[index] = 0;
+        index++;
+        buffer[index] = (byte) zoneConfig.ZoneCount;
+        index++;
+        for (byte i = 0; i < 0x40; i = (byte) (i + 1)){
+            if (zoneConfig.ZoneCount > i){
+                foreach (ZonePoint point in zoneConfig.ZoneList[i].Points){
+                    list.Add(point);
+                }
+                list2.Add(Util.GetMaskForZone(zoneConfig.ZoneList[i].Mask.EntryFlag, zoneConfig.ZoneList[i].Mask.ExitFlag, zoneConfig.ZoneList[i].Mask.InFlag, zoneConfig.ZoneList[i].Mask.OutFlag));
+                if (list.Count > 0){
+                    buffer[index] = (byte) (list.Count - 1);
+                }
+            }
+            else{
+                list2.Add(0);
+            }
+            index++;
+        }
+        zoneConfig.AddSource(GetMessageLevel0(GetMessageLevel1(buffer, zoneConfig.ShortID), ""));
+        zoneConfig.AddMessage(Util.GetStringFromByteArray(zoneConfig.Source[0]));
+        
+        
+        for (int j = list.Count; j < 0x100; j++){
+            list.Add(new ZonePoint(0, 0));
+        }
+        for (byte k = 1; k <= 0x17; k = (byte) (k + 1)){
+            buffer = GetCommandLevel3Template((byte) zoneConfig.CommandID, zoneConfig.MessageID);
+            index = 3;
+            buffer[index] = 3;
+            index++;
+            buffer[index] = k;
+            index++;
+            for (byte num5 = 0; num5 < 11; num5 = (byte) (num5 + 1)){
+                byte num6 = (byte) (((k - 1) * 11) + num5);
+                TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.IntToBytes(list[num6].Longitude / 10), buffer, index, 4);
+                index += 4;
+                TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.IntToBytes(list[num6].Latitude / 10), buffer, index, 4);
+                index += 4;
+            }
+            zoneConfig.AddSource(GetMessageLevel0(GetMessageLevel1(buffer, zoneConfig.ShortID), ""));
+            zoneConfig.AddMessage(Util.GetStringFromByteArray(zoneConfig.Source[k]));
+        }
+        buffer = GetCommandLevel3Template((byte) zoneConfig.CommandID, zoneConfig.MessageID);
+        index = 3;
+        buffer[index] = 4;
+        index++;
+        buffer[index] = 0;
+        index++;
+        for (byte m = 0; m < 3; m = (byte) (m + 1)){
+            byte num8 = (byte) (0xfd + m);
+            TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.IntToBytes(list[num8].Longitude / 10), buffer, index, 4);
+            index += 4;
+            TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.IntToBytes(list[num8].Latitude / 10), buffer, index, 4);
+            index += 4;
+        }
+        for (byte n = 0; n < 0x40; n = (byte) (n + 1)){
+            TeletrackProtocolA1.FillCommandAttribute(new byte[] { list2[n] }, buffer, index, 1);
+            index++;
+        }
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.IntToBytes(zoneConfig.ZoneMsgID), buffer, index, 4);
+        index += 4;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.IntToBytes(Util.CalculateZoneConfigCRC(zoneConfig)), buffer, index, 4);
+        zoneConfig.AddSource(GetMessageLevel0(GetMessageLevel1(buffer, zoneConfig.ShortID), ""));
+        zoneConfig.AddMessage(Util.GetStringFromByteArray(zoneConfig.Source[0x18]));
+        return zoneConfig.Message.ToArray();
+        */
+        return null;
+    }
+
+    public byte[] EncodeIdConfigSet(DeviceCommand query, int commandID){
+        if (query == null){
+            return null;
+        }
+        String data = query.getData();
+        String DevIdShort = this.getDataManager().getQuantParametr(data,"devidshort");
+        String DevIdLong = this.getDataManager().getQuantParametr(data,"devidlong");
+        String ModuleIdGps = this.getDataManager().getQuantParametr(data,"moduleidgps");
+        String ModuleIdGsm = this.getDataManager().getQuantParametr(data,"moduleIdgsm");
+        String ModuleIdMm = this.getDataManager().getQuantParametr(data,"moduleidmm");
+        String ModuleIdRf = this.getDataManager().getQuantParametr(data,"moduleidrf");
+        String ModuleIdSs = this.getDataManager().getQuantParametr(data,"moduleidss");
+        String VerProtocolLong = this.getDataManager().getQuantParametr(data,"verprotocollong");
+        String VerProtocolShort = this.getDataManager().getQuantParametr(data,"verprotocolshort");
+                
+        int id = (int) Integer.valueOf(query.getId().toString());
+        byte[] destinationCommand = TeletrackProtocolA1.GetCommandLevel3Template((byte) commandID, id);
+        
+        int startIndex = 3;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(DevIdShort, 4), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(DevIdLong, 0x10), destinationCommand, startIndex, 0x10);
+        startIndex += 0x10;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(ModuleIdGps, 4), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(ModuleIdGsm, 4), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(ModuleIdMm, 4), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(ModuleIdRf, 4), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(ModuleIdSs, 4), destinationCommand, startIndex, 4);
+        startIndex += 4;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(VerProtocolLong, 0x10), destinationCommand, startIndex, 0x10);
+        startIndex += 0x10;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(VerProtocolShort, 4), destinationCommand, startIndex, 4);
+
+        return TeletrackProtocolA1.GetMessageLevel0(TeletrackProtocolA1.GetMessageLevel1(destinationCommand, deviceImei), "");
+    }
+        
+    public byte[] EncodeGprsBaseConfigSet(DeviceCommand query, int commandID){
+        if (query == null){
+            return null;
+        }
+        String data = query.getData();
+        int Mode = Integer.parseInt(this.getDataManager().getQuantParametr(data,"mode"));
+        String ApnServer = this.getDataManager().getQuantParametr(data,"apnserver");
+        String ApnLogin = this.getDataManager().getQuantParametr(data,"apnlogin");
+        String ApnPassword = this.getDataManager().getQuantParametr(data,"apnpassword");
+        String DnsServer = this.getDataManager().getQuantParametr(data,"dnsserver");
+        String DialNumber = this.getDataManager().getQuantParametr(data,"dialnumber");
+        String GprsLogin = this.getDataManager().getQuantParametr(data,"gprslogin");
+        String GprsPassword = this.getDataManager().getQuantParametr(data,"gprspassword");
+        
+        int id = (int) Integer.valueOf(query.getId().toString());
+        byte[] destinationCommand = TeletrackProtocolA1.GetCommandLevel3Template((byte) commandID, id);
+        int startIndex = 3;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UShortToBytes(Mode), destinationCommand, startIndex, 2);
+        startIndex += 2;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(ApnServer, 0x19), destinationCommand, startIndex, 0x19);
+        startIndex += 0x19;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(ApnLogin, 10), destinationCommand, startIndex, 10);
+        startIndex += 10;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(ApnPassword, 10), destinationCommand, startIndex, 10);
+        startIndex += 10;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(DnsServer, 0x10), destinationCommand, startIndex, 0x10);
+        startIndex += 0x10;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(DialNumber, 11), destinationCommand, startIndex, 11);
+        startIndex += 11;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(GprsLogin, 10), destinationCommand, startIndex, 10);
+        startIndex += 10;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(GprsPassword, 10), destinationCommand, startIndex, 10);
+
+        return TeletrackProtocolA1.GetMessageLevel0(TeletrackProtocolA1.GetMessageLevel1(destinationCommand, deviceImei), "");
+        
+    }
+
+    public byte[] EncodeGprsProviderConfigSet(DeviceCommand query, int commandID){
+        if (query == null){
+            return null;
+        }
+        String data = query.getData();
+        String InitString = this.getDataManager().getQuantParametr(data,"initstring");
+        String Domain = this.getDataManager().getQuantParametr(data,"domain");
+        
+        int id = (int) Integer.valueOf(query.getId().toString());
+        byte[] destinationCommand = TeletrackProtocolA1.GetCommandLevel3Template((byte) commandID, id);
+        int startIndex = 3;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(InitString, 50), destinationCommand, startIndex, 50);
+        startIndex += 50;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(Domain, 0x19), destinationCommand, startIndex, 0x19);
+
+        return TeletrackProtocolA1.GetMessageLevel0(TeletrackProtocolA1.GetMessageLevel1(destinationCommand, deviceImei), "");
+        
+    }
+
+    public byte[] EncodeGprsEmailConfigSet(DeviceCommand query, int commandID){
+        if (query == null){
+            return null;
+        }
+        String data = query.getData();
+        String SmtpServer = this.getDataManager().getQuantParametr(data,"smtpserver");
+        String SmtpLogin = this.getDataManager().getQuantParametr(data,"smtplogin");
+        String SmtpPassword = this.getDataManager().getQuantParametr(data,"smtppassword");
+        String Pop3Server = this.getDataManager().getQuantParametr(data,"pop3server");
+        String Pop3Login = this.getDataManager().getQuantParametr(data,"pop3login");
+        String Pop3Password = this.getDataManager().getQuantParametr(data,"pop3password");
+        
+        int id = (int) Integer.valueOf(query.getId().toString());
+        byte[] destinationCommand = TeletrackProtocolA1.GetCommandLevel3Template((byte) commandID, id);
+        int startIndex = 3;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(SmtpServer, 0x19), destinationCommand, startIndex, 0x19);
+        startIndex += 0x19;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(SmtpLogin, 10), destinationCommand, startIndex, 10);
+        startIndex += 10;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(SmtpPassword, 10), destinationCommand, startIndex, 10);
+        startIndex += 10;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(Pop3Server, 0x19), destinationCommand, startIndex, 0x19);
+        startIndex += 0x19;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(Pop3Login, 10), destinationCommand, startIndex, 10);
+        startIndex += 10;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(Pop3Password, 10), destinationCommand, startIndex, 10);
+
+        return TeletrackProtocolA1.GetMessageLevel0(TeletrackProtocolA1.GetMessageLevel1(destinationCommand, deviceImei), "");
+        
+    }
+
+    public byte[] EncodeGprsSocketConfigSet(DeviceCommand query, int commandID){
+        if (query == null){
+            return null;
+        }
+        String data = query.getData();
+        String Server = this.getDataManager().getQuantParametr(data,"server");
+        int Port = Integer.valueOf(this.getDataManager().getQuantParametr(data,"port"));
+
+        int id = (int) Integer.valueOf(query.getId().toString());
+        byte[] destinationCommand = TeletrackProtocolA1.GetCommandLevel3Template((byte) commandID, id);
+        int startIndex = 3;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(Server, 20), destinationCommand, startIndex, 20);
+        startIndex += 20;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4UShortToBytes(Port), destinationCommand, startIndex, 2);
+        return TeletrackProtocolA1.GetMessageLevel0(TeletrackProtocolA1.GetMessageLevel1(destinationCommand, deviceImei), "");        
+    }
+
+    public byte[] EncodeGprsFtpConfigSet(DeviceCommand query, int commandID){
+        if (query == null){
+            return null;
+        }
+        String data = query.getData();
+        String Server = this.getDataManager().getQuantParametr(data,"server");
+        String Login = this.getDataManager().getQuantParametr(data,"login");
+        String Password = this.getDataManager().getQuantParametr(data,"password");
+        String ConfigPath = this.getDataManager().getQuantParametr(data,"configpath");
+        String PutPath = this.getDataManager().getQuantParametr(data,"putpath");
+
+        int id = (int) Integer.valueOf(query.getId().toString());
+        byte[] destinationCommand = TeletrackProtocolA1.GetCommandLevel3Template((byte) commandID, id);
+        int startIndex = 3;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(Server, 0x19), destinationCommand, startIndex, 0x19);
+        startIndex += 0x19;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(Login, 10), destinationCommand, startIndex, 10);
+        startIndex += 10;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(Password, 10), destinationCommand, startIndex, 10);
+        startIndex += 10;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(ConfigPath, 20), destinationCommand, startIndex, 20);
+        startIndex += 20;
+        TeletrackProtocolA1.FillCommandAttribute(TeletrackProtocolA1.L4StringToBytes(PutPath, 20), destinationCommand, startIndex, 20);
+        return TeletrackProtocolA1.GetMessageLevel0(TeletrackProtocolA1.GetMessageLevel1(destinationCommand, deviceImei), "");        
+    }
+
     public static <T> boolean in(T value, T... list) {
         for (T item : list) {
             if (value.equals(item))

@@ -106,8 +106,9 @@ public class BitrakProtocolDecoder extends BaseProtocolDecoder {
                     if(cmdName != null){
                         byte[] sData = getBuildConfig(cmdName, (paramId == null ? 0 : Integer.parseInt(paramId)), paramValue);
                         
-                        command.setCommand(ChannelBufferTools.readHexString(sData));                        
+                                               
                         if(sendData == null){
+                            command.setCommand(ChannelBufferTools.readHexString(sData)); 
                             sendData = sData;
                         } else {
                             sendData = ChannelBufferTools.mergeArray(sendData, sData);
@@ -503,7 +504,7 @@ public class BitrakProtocolDecoder extends BaseProtocolDecoder {
             result[2] = (byte)(paramId);
         }
         //Тип пакета – конфигурационный пакет установка значения параметра
-        if("setparam".equals(cmd)){
+        else if("setparam".equals(cmd)){
             switch (paramId) {
                 case 242://Точка доступа GPRS ( по умолчанию 3g.utel.ua )
                 case 243://Логин доступа GPRS ( по умолчанию не установлен. )
@@ -612,56 +613,61 @@ public class BitrakProtocolDecoder extends BaseProtocolDecoder {
                 result[3] = lengthData;
             }
         }
-        //40 - Пакет с командой от сервера
-        if ("command".equals(cmd)){
-            result = new byte[2];
-            result[0] = 40;
-            
-            if ("getgps".equals(value.toLowerCase())){
-                //Возврат текущих координат GPS
-                result[1] = 0;
-            }
-            else if ("cpureset".equals(value.toLowerCase())){
-                //Выполняется сохранение системных пераметров и перезагрузка процессора
-                result[1] = 1;
-            }
-            else if ("getver".equals(value.toLowerCase())){
-                //Возвращается версия П/О треккера
-                result[1] = 2;
-            }
-            else if ("deletegpsrecords".equals(value.toLowerCase())){
-                //Стирается информация о записях GPS данных во flash-памяти
-                result[1] = 4;
-            }
-            else if ("getio".equals(value.toLowerCase())){
-                //Получение состояния цифровых входов, цифровых выходов и аналоговых входов
-                result[1] = 6;
-            }
-            else if ("setdigout 1".equals(value.toLowerCase())){
-                //Установить цифровой выход 1
-                result[1] = 7;
-            }
-            else if ("clrdigout 1".equals(value.toLowerCase())){
-                //бросить цифровой выход 1
-                result[1] = 8;
-            }
-            else if ("setdigout 2".equals(value.toLowerCase())){
-                //Установить цифровой выход 2
-                result[1] = 9;
-            }
-            else if ("clrdigout 2".equals(value.toLowerCase())){
-                //сбросить цифровой выход 2
-                result[1] = 10;
-            }
-        }
-        //43 - Командой обновления П/О
-        if ("boot".equals(cmd)){
+        else if ("boot".equals(cmd)){  //43 - Командой обновления П/О
             lengthConfig = 2;
             lengthData = (byte)(value.length() + 1);
             result = new byte[lengthConfig + lengthData];
             System.arraycopy(value.getBytes(), 0, result, lengthConfig, lengthData - 1);
             result[lengthConfig + lengthData] = 0;
-        }        
+        }
+        else {
+            //40 - Пакет с командой от сервера
+            //    result = new byte[2];
+            ///   result[0] = 40;
+            result = new byte[2];
+            result[0] = 40;
+            if ("getgps".equals(cmd.toLowerCase())){
+
+                //Возврат текущих координат GPS
+                result[1] = 0;
+            }
+            else if ("cpureset".equals(cmd.toLowerCase())){
+                //Выполняется сохранение системных пераметров и перезагрузка процессора
+                result[1] = 1;
+            }
+            else if ("getver".equals(cmd.toLowerCase())){
+                //Возвращается версия П/О треккера
+                result[1] = 2;
+            }
+            else if ("deletegpsrecords".equals(cmd.toLowerCase())){
+                //Стирается информация о записях GPS данных во flash-памяти
+                result[1] = 4;
+            }
+            else if ("getio".equals(cmd.toLowerCase())){
+                //Получение состояния цифровых входов, цифровых выходов и аналоговых входов
+                result[1] = 6;
+            }
+            else if ("setdigout 1".equals(cmd.toLowerCase())){
+                //Установить цифровой выход 1
+                result[1] = 7;
+            }
+            else if ("clrdigout 1".equals(cmd.toLowerCase())){
+                //бросить цифровой выход 1
+                result[1] = 8;
+            }
+            else if ("setdigout 2".equals(cmd.toLowerCase())){
+                //Установить цифровой выход 2
+                result[1] = 9;
+            }
+            else if ("clrdigout 2".equals(cmd.toLowerCase())){
+                //сбросить цифровой выход 2
+                result[1] = 10;
+            }
+            else {
+                result = null;
+            }
+        }
+                
         return result;
     }
     

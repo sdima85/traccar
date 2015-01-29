@@ -171,6 +171,7 @@ public class TeletrackProtocolA1 {
             //throw new ArgumentOutOfRangeException("length", "Для параметра length должны выполняться условия: (length > 0) && (startIndex + length < source.Length)");
         }
         StringBuilder builder = new StringBuilder();
+        builder.append("");
         for (int i = startIndex; i < num; i++){
             char ch = ConvertAsciiWin1251ToChar(source[i]);
             if (((byte) ch) == 0){
@@ -195,7 +196,7 @@ public class TeletrackProtocolA1 {
         String str = "";
         for (int i = startIndex << 1; i < (num << 1); i++)
         {
-            byte phoneNumberSymbol = L4GetPhoneNumberSymbol(source, i);
+            short phoneNumberSymbol = L4GetPhoneNumberSymbol(source, i);
             if (phoneNumberSymbol >= 13){
                 return str;
             }
@@ -220,7 +221,7 @@ public class TeletrackProtocolA1 {
         return str;
     }
 
-    public static byte L4GetPhoneNumberSymbol(byte[] source, int index){
+    public static short L4GetPhoneNumberSymbol(byte[] source, int index){
         if ((source == null) || (source.length == 0)) {
             //throw new ArgumentNullException("source", "Не передан массив байт source");
         }
@@ -228,9 +229,9 @@ public class TeletrackProtocolA1 {
             //throw new ArgumentOutOfRangeException("index", "Для параметра index должны выполняться условия: (index >= 0) && (index < source.Length)");
         }
         if ((index & 1) != 0){
-            return (byte) (source[index >> 1] & 15);
+            return (short) (source[index >> 1] & 15);
         }
-        return (byte) (source[index >> 1] >> 4);
+        return (short) ((source[index >> 1] & 0xFF) >> 4);
     }
 
     public static int L4BytesToInt(byte[] source, int startIndex){
@@ -271,6 +272,22 @@ public class TeletrackProtocolA1 {
         }
         return /*Convert.ToChar*/(char)((int) ((code + 0x410) - 0xc0));
     }
+    public static byte ConvertCharToAsciiWin1251(char symbol){
+        if (symbol == 'Ё'){
+            symbol = 'Е';
+        }
+        else if (symbol == 'ё'){
+            symbol = 'е';
+        }
+        if (symbol < 'Ā'){
+            return (byte) (symbol & 0xFF); //Convert.ToByte(symbol);
+        }
+        if ((symbol >= 'А') && (symbol <= 'я'))
+        {
+            return (byte) (symbol & 0xFF); //(byte) (('\x00c0' + symbol) - 0x410);
+        }
+        return 63; //Convert.ToByte('?');
+    }
 
     //Encoder Levels
     
@@ -287,6 +304,82 @@ public class TeletrackProtocolA1 {
         result[1] = (byte) (value & 0xFF);
         return result;
     }
+    public static byte[] L4IntToBytes(int value){
+        byte[] buffer = L4UShortToBytes((int) (value >> 0x10));
+        byte[] buffer2 = L4UShortToBytes((int) value);
+        return new byte[] { buffer[0], buffer[1], buffer2[0], buffer2[1] };
+    }
+    public static byte[] L4StringToBytes(String value, int maxLength){
+        if (value == null){
+            //throw new ArgumentNullException("value", "Не передана строка value");
+            return null;
+        }
+        if (maxLength <= 0){
+            //throw new ArgumentOutOfRangeException("maxLength", "Параметр maxLength должен быть больше нуля");
+            return null;
+        }
+        byte[] buffer = new byte[value.length()];
+        for (int i = 0; i < Math.min(value.length(), maxLength); i++){
+            buffer[i] = ConvertCharToAsciiWin1251(value.charAt(i));
+        }
+        return buffer;
+    }
+    public static byte[] L4TelNumberToBytes(String phoneNumber, int maxLength){
+        if (phoneNumber == null){
+            //throw new ArgumentNullException("phoneNumber", "Не передан телефонный номер");
+            return null;
+        }
+        if (maxLength <= 0){
+            //throw new ArgumentOutOfRangeException("maxLength", "maxLength должен быть больше нуля");
+            return null;
+        }
+        byte[] result = new byte[maxLength];
+        int index = 0;
+        int num2 = (maxLength << 1) - 2;
+        while ((index < phoneNumber.length()) && (index < num2)) {
+            L4WriteTelNumberSymbol(phoneNumber.charAt(index), result, index);
+            index++;
+        }
+        L4WriteTelNumberSymbol(';', result, index);
+        index++;
+        L4WriteTelNumberSymbol('\0', result, index);
+        return result;
+    }
+    private static void L4WriteTelNumberSymbol(char symbol, byte[] result, int index){
+        short num = 0xff;
+        switch (symbol){
+            case '*':
+                num = 11;
+                break;
+            case '+':
+                num = 10;
+                break;
+            case ';':
+                num = 13;
+                break;
+            case '\0':
+                num = 15;
+                break;
+            case '#':
+                num = 12;
+                break;
+            default:
+                if (((symbol & 0xFF) >= 0x30) && ((symbol & 0xFF) <= 0x39)){
+                    num = (short)((symbol & 0xFF) - 0x30);
+                }
+                break;
+        }
+        if (num < 0x10)
+        {
+            if ((index & 1) != 0) {
+                result[index >> 1] = (byte) ((result[index >> 1] & 240) | (num & 15));
+            }
+            else {
+                result[index >> 1] = (byte) ((result[index >> 1] & 15) | ((num & 15) << 4));
+            }
+        }
+    }
+    
     public static byte L1ValueToSymbol(byte value){
         byte ASCII_CODE_A = 65; //Convert.ToByte('A');  
         
@@ -467,5 +560,28 @@ public class TeletrackProtocolA1 {
         System.arraycopy(sourceAttribute, 0, destinationArray, 0, Math.min(alignLength, sourceAttribute.length));
         //Array.Copy(destinationArray, 0, destinationCommand, startIndex, alignLength);
         System.arraycopy(destinationArray, 0, destinationCommand, startIndex, alignLength);
+    }
+
+    public static byte GetMaskForZone(byte entryFlag, byte exitFlag, byte inFlag, byte OutFlag){
+        short num = 0;
+        if (entryFlag != 0){
+            num = 1;
+        }
+        if (exitFlag == 0){
+            num = (short) (num & 0xfd);
+        }
+        else{
+            num = (short) (num | 2);
+        }
+        if (inFlag == 0){
+            num = (short) (num & 0xfb);
+        }
+        else{
+            num = (short) (num | 4);
+        }
+        if (OutFlag == 0){
+            return (byte) (num & 0xf7);
+        }
+        return (byte) (num | 8);
     }
 }
