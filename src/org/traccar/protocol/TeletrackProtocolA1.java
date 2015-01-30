@@ -79,7 +79,8 @@ public class TeletrackProtocolA1 {
         int num2 = 0;
         for (int i = startIndex; i <= num; i++){
             if (i != 7){
-                num2 += source[i];
+                short src = (short)(source[i] & 0xFF);
+                num2 += (src & 0xFF);
                 num2 &= 0xff;
             }
         }
@@ -173,7 +174,7 @@ public class TeletrackProtocolA1 {
         StringBuilder builder = new StringBuilder();
         builder.append("");
         for (int i = startIndex; i < num; i++){
-            char ch = ConvertAsciiWin1251ToChar(source[i]);
+            char ch = ConvertAsciiWin1251ToChar( (short)(source[i] & 0xFF) );
             if (((byte) ch) == 0){
                 break;
             }
@@ -259,7 +260,7 @@ public class TeletrackProtocolA1 {
 
     }
 
-    public static char ConvertAsciiWin1251ToChar(byte code){
+    public static char ConvertAsciiWin1251ToChar(short code){
         if (code < 0xc0){
             switch ((int)code){
                 case 0xa8:
@@ -289,8 +290,7 @@ public class TeletrackProtocolA1 {
         return 63; //Convert.ToByte('?');
     }
 
-    //Encoder Levels
-    
+    //Encoder Levels    
     public static byte[] L4UIntToBytes(long value){
         Long val = ((value >> 0x10) & 0xFFFF);        
         byte[] buffer = L4UShortToBytes( Integer.valueOf(val.toString()) );
@@ -425,9 +425,9 @@ public class TeletrackProtocolA1 {
             short num7 = 0;
             short num8 = 0;
             int index = 3 * i;
-            short num2 = source[index];
-            short num3 = source[index + 1];
-            short num4 = source[index + 2];
+            short num2 = (short) (source[index] & 0xFF);
+            short num3 = (short) (source[index + 1] & 0xFF);
+            short num4 = (short) (source[index + 2] & 0xFF);
             num5 = (short) ((num2 >> 2) & 0xFF);
             num6 = (short) ((num3 >> 2) & 0xFF);
             num7 = (short) ((num4 >> 2) & 0xFF);
@@ -529,8 +529,11 @@ public class TeletrackProtocolA1 {
         destinationArray[5] = L1ValueToSymbol((byte)(devShortId.charAt(2)));
         destinationArray[6] = L1ValueToSymbol((byte)(devShortId.charAt(3)));
         //Array.Copy(Level1Converter.Encode8BitTo6(level3Command), 0, destinationArray, 8, 0x88);
-        System.arraycopy(L1Encode8BitTo6(level3Command), 0, destinationArray, 8, 0x88);
-        destinationArray[7] = L1ValueToSymbol(CalculateLevel1CRC(destinationArray, 0, 0x88));
+        byte[] bit6 = L1Encode8BitTo6(level3Command);
+        System.arraycopy(bit6, 0, destinationArray, 8, 0x88);
+        
+        byte crc = CalculateLevel1CRC(destinationArray, 0, 0x88);
+        destinationArray[7] = L1ValueToSymbol(crc);
         return destinationArray;
     }
     
