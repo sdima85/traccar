@@ -2,6 +2,7 @@
  */
 package org.traccar.protocol;
 
+import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.util.LinkedList;
@@ -272,7 +273,7 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         position.setImei(deviceImei);
 
         long logId = readUInt(buf); //4b
-        extendedInfo.set("logId", logId);
+        extendedInfo.set("logid", logId);
 
         long time = readUInt(buf); //4b
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
@@ -298,16 +299,17 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         position.setValid((flags & 0x08) != 0);
 
         String sensors = "";  //8b
-        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //1
-        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //2
-        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //3
-        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //4
-        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //5
-        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //6
-        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //7
-        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //Integer.toBinaryString((buf.readUnsignedByte()+256)%256); //8
-        extendedInfo.set("sensors", sensors);
-
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //1
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //
+        sensors += String.format("%8s", Integer.toBinaryString(buf.readUnsignedByte() & 0xFF)).replace(' ', '0'); //8
+        Long sens = new BigInteger(sensors, 2).longValue();//Long.parseLong(sensors, 2);                
+        extendedInfo.set("sensors", Long.toUnsignedString(sens));
+        
         long events = buf.readUnsignedByte(); //3b
         events += (buf.readUnsignedByte() << 8);
         events += (buf.readUnsignedByte() << 16);
@@ -506,8 +508,9 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
             
             if(((count*BIN_LENGTH)+ATR_LENGTH+1)==buf.readableBytes()){
                 //Пакет полный     
-                parseMultiBinLocation(channel, buf);
+                List<Position> positions = parseMultiBinLocation(channel, buf);
                 packetClear();
+                return positions;
             }
             else {
                 packetIndex = buf.readableBytes();
@@ -923,7 +926,8 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
                 startIndex = (short) (startIndex + 4);
             }
             if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte) 9)){
-                String sensors = "";  //8b
+                String sensors = "";  //8b                
+                                
                 sensors += String.format("%8s", Integer.toBinaryString(command[startIndex] & 0xFF)).replace(' ', '0');
                 startIndex = (short) (startIndex + 1);
                 sensors += String.format("%8s", Integer.toBinaryString(command[startIndex] & 0xFF)).replace(' ', '0');
@@ -941,7 +945,9 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
                 sensors += String.format("%8s", Integer.toBinaryString(command[startIndex] & 0xFF)).replace(' ', '0');
                 startIndex = (short) (startIndex + 1);
                 
-                extendedInfo.set("sensors", sensors);
+                Long sens = new BigInteger(sensors, 2).longValue();
+                //Long sens = Long.parseLong(sensors, 2);                
+                extendedInfo.set("sensors", Long.toUnsignedString(sens));
             }
             if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte)10)){
                 extendedInfo.set("counter1", TeletrackProtocolA1.L4ToInt16(command, startIndex) & 0xFFFF);
