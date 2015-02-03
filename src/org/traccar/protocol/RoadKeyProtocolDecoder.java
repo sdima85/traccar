@@ -113,138 +113,40 @@ public class RoadKeyProtocolDecoder extends BaseProtocolDecoder {
             if (channel != null) {
                 channel.write("set IMEI\r\n");
             }
+            return null;
         }
         //<02>353976014438992<03>
-        if(sentence.length() == 17){
+        if((sentence.length() == 17) && (sentence.charAt(0) == 2) && (sentence.charAt(16) == 3)){
             //sentence.charAt(0) == 2
             //sentence.charAt(16) == 3
-            //identify();
+            identify(sentence.substring(1, 15));
             
             if (channel != null) {
                 channel.write("lt\r\n");
             }
+            return null;
         }
         //lt - читать путевую точку
         
-        if (sentence.startsWith("$PRKA")) {
-        }
-        if (sentence.startsWith("$PRKB")) {
-        }
-        if (sentence.startsWith("$PRKZ")) {
-        }
+        //Ошибка чтения путевого блока
         if (sentence.startsWith("$PRKERR")) {
+            //Очистка
         }
-        
-        
-        if (!sentence.startsWith("$") && sentence.contains("$")) {
-            int index = sentence.indexOf("$");
-            String id = sentence.substring(0, index);
-            if (id.endsWith(",")) {
-                id = id.substring(0, id.length() - 1);
-            }
-            identify(id);
-            sentence = sentence.substring(index);
+        //Старт - 
+        if (sentence.startsWith("$PRKA")) {
+            
         }
-
-        // Identification
-        if (sentence.startsWith("$PGID")) {
-            identify(sentence.substring(6, sentence.length() - 3));
+        else if (sentence.startsWith("$PRKB")) {
         }
-
-        // Identification
-        else if (sentence.startsWith("$PCPTI")) {
-            identify(sentence.substring(7, sentence.indexOf(",", 7)));
+        //Конец
+        else if (sentence.startsWith("$PRKZ")) {
         }
-
-        // Identification
-        else if (sentence.startsWith("IMEI")) {
-            identify(sentence.substring(5, sentence.length()));
+        //Номер logId точки в устройстве
+        else if((sentence.charAt(0) == 2) && (sentence.charAt(sentence.length()-1) == 3)){
+            String logId = sentence.substring(1, sentence.length()-1);
+            
+            //Отправка в базу
         }
-
-        // Identification
-        else if (sentence.startsWith("$GPFID")) {
-            identify(sentence.substring(6, sentence.length()));
-        }
-
-        // Identification
-        else if (Character.isDigit(sentence.charAt(0)) & sentence.length() == 15) {
-            identify(sentence);
-        }
-
-        // Location
-        else if (sentence.startsWith("$GPRMC") && deviceId != null) {
-
-            // Send response
-            if (channel != null) {
-                channel.write("OK1\r\n");
-            }
-
-            // Parse message
-            Matcher parser = patternGPRMC.matcher(sentence);
-            if (!parser.matches()) {
-                return null;
-            }
-
-            // Create new position
-            Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
-            position.setDeviceId(deviceId);
-            position.setTableName(tableName);
-            position.setImei(deviceImei);
-
-            Integer index = 1;
-
-            // Time
-            Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
-            time.clear();
-            time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
-
-            // Validity
-            position.setValid(parser.group(index++).compareTo("A") == 0);
-
-            // Latitude
-            Double latitude = Double.valueOf(parser.group(index++));
-            latitude += Double.valueOf(parser.group(index++)) / 60;
-            if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
-            position.setLatitude(latitude);
-
-            // Longitude
-            Double longitude = Double.valueOf(parser.group(index++));
-            longitude += Double.valueOf(parser.group(index++)) / 60;
-            if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
-            position.setLongitude(longitude);
-
-            // Speed
-            String speed = parser.group(index++);
-            if (speed != null) {
-                position.setSpeed(Double.valueOf(speed));
-            } else {
-                position.setSpeed(0.0);
-            }
-
-            // Course
-            String course = parser.group(index++);
-            if (course != null) {
-                position.setCourse(Double.valueOf(course));
-            } else {
-                position.setCourse(0.0);
-            }
-
-            // Date
-            time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-            time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
-            position.setTime(time.getTime());
-
-            // Altitude
-            position.setAltitude(0.0);
-
-            position.setExtendedInfo(extendedInfo.getStyle(getDataManager().getStyleInfo()));
-            return position;
-        }
-
         // Location
         else if (sentence.startsWith("$GPGGA") && deviceId != null) {
 
@@ -298,111 +200,7 @@ public class RoadKeyProtocolDecoder extends BaseProtocolDecoder {
             position.setExtendedInfo(extendedInfo.getStyle(getDataManager().getStyleInfo()));
             return position;
         }
-
-        // Location
-        else if (sentence.startsWith("$GPRMA") && deviceId != null) {
-
-            // Parse message
-            Matcher parser = patternGPRMA.matcher(sentence);
-            if (!parser.matches()) {
-                return null;
-            }
-
-            // Create new position
-            Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
-            position.setDeviceId(deviceId);
-            position.setTableName(tableName);
-            position.setImei(deviceImei);
-
-            Integer index = 1;
-
-            // Time
-            position.setTime(Calendar.getInstance(TimeZone.getTimeZone("UTC")).getTime());
-
-            // Validity
-            position.setValid(parser.group(index++).compareTo("A") == 0);
-
-            // Latitude
-            Double latitude = Double.valueOf(parser.group(index++));
-            latitude += Double.valueOf(parser.group(index++)) / 60;
-            if (parser.group(index++).compareTo("S") == 0) latitude = -latitude;
-            position.setLatitude(latitude);
-
-            // Longitude
-            Double longitude = Double.valueOf(parser.group(index++));
-            longitude += Double.valueOf(parser.group(index++)) / 60;
-            if (parser.group(index++).compareTo("W") == 0) longitude = -longitude;
-            position.setLongitude(longitude);
-
-            // Speed
-            String speed = parser.group(index++);
-            if (speed != null) {
-                position.setSpeed(Double.valueOf(speed));
-            } else {
-                position.setSpeed(0.0);
-            }
-
-            // Course
-            String course = parser.group(index++);
-            if (course != null) {
-                position.setCourse(Double.valueOf(course));
-            } else {
-                position.setCourse(0.0);
-            }
-
-            // Altitude
-            position.setAltitude(0.0);
-
-            position.setExtendedInfo(extendedInfo.getStyle(getDataManager().getStyleInfo()));
-            return position;
-        }
-
-        // Location
-        else if (sentence.startsWith("$TRCCR") && deviceId != null) {
-
-            // Parse message
-            Matcher parser = patternTRCCR.matcher(sentence);
-            if (!parser.matches()) {
-                return null;
-            }
-
-            // Create new position
-            Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
-            position.setDeviceId(deviceId);
-            position.setTableName(tableName);
-            position.setImei(deviceImei);
-
-            Integer index = 1;
-
-            // Time
-            Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
-            time.clear();
-            time.set(Calendar.YEAR, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
-            time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
-            time.set(Calendar.SECOND, Integer.valueOf(parser.group(index++)));
-            position.setTime(time.getTime());
-
-            // Validity
-            position.setValid(parser.group(index++).compareTo("A") == 0);
-
-            // Location
-            position.setLatitude(Double.valueOf(parser.group(index++)));
-            position.setLongitude(Double.valueOf(parser.group(index++)));
-            position.setSpeed(Double.valueOf(parser.group(index++)));
-            position.setCourse(Double.valueOf(parser.group(index++)));
-            position.setAltitude(Double.valueOf(parser.group(index++)));
-
-            // Battery
-            extendedInfo.set("battery", parser.group(index++));
-
-            position.setExtendedInfo(extendedInfo.getStyle(getDataManager().getStyleInfo()));
-            return position;
-        }
+        
 
         return null;
     }
