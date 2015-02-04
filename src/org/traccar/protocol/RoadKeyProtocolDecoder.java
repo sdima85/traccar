@@ -36,23 +36,13 @@ public class RoadKeyProtocolDecoder extends BaseProtocolDecoder {
     private Long deviceId;
     private String deviceImei;
     private String tableName;
+    
+    private Position position;
+    private ExtendedInfoFormatter extendedInfo;
 
     public RoadKeyProtocolDecoder(DataManager dataManager, String protocol, Properties properties) {
         super(dataManager, protocol, properties);
     }
-
-    private static final Pattern patternGPRMC = Pattern.compile(
-            "\\$GPRMC," +
-            "(\\d{2})(\\d{2})(\\d{2})\\.?\\d*," + // Time (HHMMSS.SSS)
-            "([AV])," +                    // Validity
-            "(\\d{2})(\\d{2}\\.\\d+)," +   // Latitude (DDMM.MMMM)
-            "([NS])," +
-            "(\\d{3})(\\d{2}\\.\\d+)," +   // Longitude (DDDMM.MMMM)
-            "([EW])," +
-            "(\\d+\\.?\\d*)?," +           // Speed
-            "(\\d+\\.?\\d*)?," +           // Course
-            "(\\d{2})(\\d{2})(\\d{2})" +   // Date (DDMMYY)
-            ".+");
 
     private static final Pattern patternGPGGA = Pattern.compile(
             "\\$GPGGA," +
@@ -63,30 +53,6 @@ public class RoadKeyProtocolDecoder extends BaseProtocolDecoder {
             "([EW])," +
             ".+");
 
-    private static final Pattern patternGPRMA = Pattern.compile(
-            "\\$GPRMA," +
-            "([AV])," +                    // Validity
-            "(\\d{2})(\\d{2}\\.\\d+)," +   // Latitude
-            "([NS])," +
-            "(\\d{3})(\\d{2}\\.\\d+)," +   // Longitude
-            "([EW]),,," +
-            "(\\d+\\.?\\d*)?," +           // Speed
-            "(\\d+\\.?\\d*)?," +           // Course
-            ".+");
-    
-    private static final Pattern patternTRCCR = Pattern.compile(
-            "\\$TRCCR," +
-            "(\\d{4})(\\d{2})(\\d{2})" +   // Date (YYYYMMDD)
-            "(\\d{2})(\\d{2})(\\d{2})\\.?\\d*," + // Time (HHMMSS.SSS)
-            "([AV])," +                    // Validity
-            "(-?\\d+\\.\\d+)," +           // Latitude
-            "(-?\\d+\\.\\d+)," +           // Longitude
-            "(\\d+\\.\\d+)," +             // Speed
-            "(\\d+\\.\\d+)," +             // Course
-            "(-?\\d+\\.\\d+)," +           // Altitude
-            "(\\d+\\.?\\d*)," +            // Battery
-            ".+");
-    
     private void identify(String id) {
         try {
             Device device = getDataManager().getDeviceByImei(id);
@@ -109,7 +75,6 @@ public class RoadKeyProtocolDecoder extends BaseProtocolDecoder {
         //Посылка строки приветствия >>>>>>
         if (sentence.startsWith("!NM")) {
             //!NM311-06080801023 Nadiya 1.9c.4012 (c) Road Key
-            // Send response
             if (channel != null) {
                 channel.write("set IMEI\r\n");
             }
@@ -117,39 +82,56 @@ public class RoadKeyProtocolDecoder extends BaseProtocolDecoder {
         }
         //<02>353976014438992<03>
         if((sentence.length() == 17) && (sentence.charAt(0) == 2) && (sentence.charAt(16) == 3)){
-            //sentence.charAt(0) == 2
-            //sentence.charAt(16) == 3
-            identify(sentence.substring(1, 15));
-            
+            identify(sentence.substring(1, 15));            
             if (channel != null) {
                 channel.write("lt\r\n");
             }
             return null;
-        }
-        //lt - читать путевую точку
-        
+        }      
         //Ошибка чтения путевого блока
         if (sentence.startsWith("$PRKERR")) {
             //Очистка
+            position = null;
+            extendedInfo = null;
         }
         //Старт - 
         if (sentence.startsWith("$PRKA")) {
+            //$PRKA,8E,240913,083130,S,im*0A
+            position = new Position();
+            extendedInfo = new ExtendedInfoFormatter(getProtocol());
             
+            position.setDeviceId(deviceId);
+            position.setTableName(tableName);
+            position.setImei(deviceImei);
+            
+            
+            
+            return null;
         }
         else if (sentence.startsWith("$PRKB")) {
+            //$PRKB,1,=EjMAkAAJAAAPiAzdABEAAAABK94AAAAUAAAArgDP//4=*3D
+            
         }
         //Конец
         else if (sentence.startsWith("$PRKZ")) {
+            //$PRKZ,S*6C
+            
         }
         //Номер logId точки в устройстве
         else if((sentence.charAt(0) == 2) && (sentence.charAt(sentence.length()-1) == 3)){
+            //<02>233615<03>
             String logId = sentence.substring(1, sentence.length()-1);
-            
-            //Отправка в базу
+            extendedInfo.set("logId", logId);
+            if (channel != null) {
+                channel.write("lt\r\n");
+            }
+            //Отправка в базу            
+            position.setExtendedInfo(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+            return position;
         }
         // Location
         else if (sentence.startsWith("$GPGGA") && deviceId != null) {
-
+//$GPGGA,083130,4849.266,N,03301.323,E,1,5,3.6,135.3,M*2C
             // Parse message
             Matcher parser = patternGPGGA.matcher(sentence);
             if (!parser.matches()) {
@@ -157,11 +139,11 @@ public class RoadKeyProtocolDecoder extends BaseProtocolDecoder {
             }
 
             // Create new position
-            Position position = new Position();
-            ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
-            position.setDeviceId(deviceId);
-            position.setTableName(tableName);
-            position.setImei(deviceImei);
+            //Position position = new Position();
+            //ExtendedInfoFormatter extendedInfo = new ExtendedInfoFormatter(getProtocol());
+            //position.setDeviceId(deviceId);
+            //position.setTableName(tableName);
+            //position.setImei(deviceImei);
 
             Integer index = 1;
 
@@ -197,11 +179,10 @@ public class RoadKeyProtocolDecoder extends BaseProtocolDecoder {
             // Altitude
             position.setAltitude(0.0);
 
-            position.setExtendedInfo(extendedInfo.getStyle(getDataManager().getStyleInfo()));
-            return position;
+            //position.setExtendedInfo(extendedInfo.getStyle(getDataManager().getStyleInfo()));
+            //return position;
         }
         
-
         return null;
     }
 
