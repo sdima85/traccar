@@ -284,6 +284,7 @@ public class DataManager {
     private NamedParameterStatement.Params assignVariables(NamedParameterStatement.Params params, Position position) throws SQLException {
        
         params.setLong("device_id", position.getDeviceId());
+        params.setLong("log_id", position.getLogId());
         params.setTimestamp("time", position.getTime());
         params.setBoolean("valid", position.getValid());
         params.setDouble("altitude", position.getAltitude());

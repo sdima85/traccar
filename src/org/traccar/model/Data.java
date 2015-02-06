@@ -99,4 +99,17 @@ public class Data {
     public void setImei(String imei) {
         this.imei = imei;
     }
+    
+    /**
+     * Id
+     */
+    private Long logId;
+
+    public Long getLogId() {
+        return logId;
+    }
+
+    public void setLogId(Long logId) {
+        this.logId = logId;
+    }
 }

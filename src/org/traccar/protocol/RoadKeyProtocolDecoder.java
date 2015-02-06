@@ -212,7 +212,8 @@ public class RoadKeyProtocolDecoder extends BaseProtocolDecoder {
         else if((sentence.charAt(0) == 2) && (sentence.charAt(sentence.length()-1) == 3)){
             //<02>233615<03>
             String logId = sentence.substring(1, sentence.length()-1);
-            extendedInfo.set("logId", logId);
+            //extendedInfo.set("logId", logId);
+            position.setLogId(Long.valueOf(logId));
             if (channel != null) {
                 channel.write("lt\r\n");
             }

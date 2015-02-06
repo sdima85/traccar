@@ -273,20 +273,21 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         position.setImei(deviceImei);
 
         long logId = readUInt(buf); //4b
-        extendedInfo.set("logid", logId);
+        //extendedInfo.set("logid", logId);
+        position.setLogId(logId);
 
         long time = readUInt(buf); //4b
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
         java.util.Date date= new java.util.Date((time*1000));
         position.setTime(date);
 
-        long lat = readUInt(buf); //buf.readInt(); //4b // / 600000.0;
-        position.setLatitude(lat / 60000.0); //* 50 / 3 / 10000000.0);
+        long lat = readUInt(buf);
+        position.setLatitude(lat / 60000.0);
 
-        long lon = readUInt(buf); //buf.readInt(); //4b // / 600000.0;
-        position.setLongitude(lon / 60000.0); //* 50 / 3 / 10000000.0);
+        long lon = readUInt(buf);
+        position.setLongitude(lon / 60000.0);
 
-        double speed = buf.readUnsignedByte()* 1.85; //1b
+        double speed = buf.readUnsignedByte()* 1.852; //1b
         position.setSpeed(speed);
 
         double direct = (buf.readUnsignedByte() * 360) / 255; //1b
@@ -908,11 +909,13 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
                 startIndex = (short) (startIndex + 1);
             }
             if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte) 5)){
-                position.setSpeed(command[startIndex] * 1.85);
+                position.setSpeed(command[startIndex] * 1.852);
                 startIndex = (short) (startIndex + 1);
             }
             if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte) 6)){
-                extendedInfo.set("logid", TeletrackProtocolA1.L4BytesToInt(command, startIndex));
+                //extendedInfo.set("logid", TeletrackProtocolA1.L4BytesToInt(command, startIndex));
+                long logId = TeletrackProtocolA1.L4BytesToInt(command, startIndex);
+                position.setLogId(logId);
                 startIndex = (short) (startIndex + 4);
             }
             if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte) 7)){
