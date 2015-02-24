@@ -2,13 +2,15 @@
  */
 package org.traccar.protocol;
 
+import java.util.Calendar;
+import java.util.Properties;
+import java.util.TimeZone;
+
 import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Properties;
-import java.util.TimeZone;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
@@ -277,9 +279,19 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
         position.setLogId(logId);
 
         long time = readUInt(buf); //4b
-        TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
-        java.util.Date date= new java.util.Date((time*1000));
-        position.setTime(date);
+        
+        Calendar date = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+        date.clear();
+        
+        //date.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
+        //date.set(Calendar.MINUTE, Integer.valueOf(parser.group(index++)));
+        date.set(Calendar.SECOND, (int)time);
+        //TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+        //java.util.Date date= new java.util.Date((time*1000));
+        
+        //date.
+        //position.setTime(date);
+        position.setTime(date.getTime());
 
         long lat = readUInt(buf);
         position.setLatitude(lat / 60000.0);
@@ -882,10 +894,14 @@ public class TeletrackProtocolDecoder extends BaseProtocolDecoder {
                 long time = TeletrackProtocolA1.L4BytesToInt(command, startIndex);
                 startIndex = (short) (startIndex + 4);
                 
-                TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
-                java.util.Date date= new java.util.Date((time*1000));
-                position.setTime(date);
+                //TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+                //java.util.Date date= new java.util.Date((time*1000));
+                //position.setTime(date);
 
+                Calendar date = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+                date.clear();
+                date.set(Calendar.SECOND, (int)time);
+                position.setTime(date.getTime());
             }
             if (TeletrackProtocolA1.IsBitSetInMask(WhatWrite, (byte)1)){
                 Latitude = TeletrackProtocolA1.L4BytesToInt(command, startIndex) * 10;
