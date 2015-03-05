@@ -391,4 +391,26 @@ public class DataManager {
         params.setString("data", command.getData());      
         return params;
     }
+
+    public long login(String name, String password) throws SQLException {
+
+        Connection connection = dataSource.getConnection();
+        try {
+            PreparedStatement statement = connection.prepareStatement(
+                    "SELECT id FROM users WHERE name = ? AND password = ?;");
+            try {
+                statement.setString(1, name);
+                statement.setString(2, password);
+
+                ResultSet result = statement.executeQuery();
+                result.next();
+                return result.getLong("id");
+            } finally {
+                statement.close();
+            }
+        } finally {
+            connection.close();
+        }
+    }
+    
 }

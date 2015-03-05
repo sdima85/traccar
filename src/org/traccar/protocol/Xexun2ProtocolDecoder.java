@@ -40,7 +40,7 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
             "[\r\n]*" +
             "(\\d+)," +                         // Serial
             "([^,]+)?," +                       // Number
-            "GPRMC," +
+            "G[PN]RMC," +
             "(\\d{2})(\\d{2})(\\d{2})\\.(\\d+)," + // Time (HHMMSS.SSS)
             "([AV])," +                         // Validity
             "(\\d{2})(\\d{2}\\.\\d+)," +        // Latitude (DDMM.MMMM)
@@ -50,14 +50,14 @@ public class Xexun2ProtocolDecoder extends BaseProtocolDecoder {
             "(\\d+\\.\\d+)," +                  // Speed
             "(\\d+\\.\\d+)?," +                 // Course
             "(\\d{2})(\\d{2})(\\d{2})," +       // Date (DDMMYY)
-            "[^,]*,[^,]*,.\\*..," +             // Checksum
+            "[^\\*]*\\*..,"       +             // Checksum
             "([FL])," +                         // Signal
             "(?:([^,]*),)?" +                   // Alarm
             ".*imei:" +
             "(\\d+)," +                         // IMEI
             "(\\d+)," +                         // Satellites
             "(-?\\d+\\.\\d+)?," +               // Altitude
-            "[FL]:(\\d+\\.\\d+)V," +            // Power
+            "[FL]:(\\d+\\.\\d+)V" +             // Power
             ".*" +
             "[\r\n]*");
 

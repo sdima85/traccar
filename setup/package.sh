@@ -16,17 +16,25 @@ else
 fi
 
 # Check wrapper
-if ls wrapper-delta-pack-*.tar.gz &> /dev/null; then
+if ls wrapper-delta-pack-*.tar.gz 1> /dev/null 2>&1; then
     echo "Java wrapper package found"
 else
     echo "Put wrapper-delta-pack-*.tar.gz into this directory"
     exit 0
 fi
 
+# Check Windows x64 wrapper
+if ls wrapper-windows-x86-64-*.zip 1> /dev/null 2>&1; then
+    echo "Java wrapper package found"
+else
+    echo "Put wrapper-windows-x86-64-*.zip (from http://www.krenger.ch/blog/tag/java-service-wrapper/) into this directory"
+    exit 0
+fi
+
 # WINDOWS REQUIREMENTS
 
 # Check inno setup
-if ls isetup-*.exe &> /dev/null; then
+if ls isetup-*.exe 1> /dev/null 2>&1; then
     echo "Inno setup installer found"
 else
     echo "Put isetup-*.exe into this directory"
@@ -73,12 +81,30 @@ zip -j tracker-server-$1.zip ../target/tracker-server.jar universal/README.txt
 innoextract isetup-*.exe
 echo "NOTE: if you got any errors here try isetup version 5.5.0 (or check what versions are supported by 'innoextract -v')"
 
+# windows 32
+
 wine app/ISCC.exe windows/traccar.iss
 
 zip -j traccar-windows-32-$1.zip windows/Output/setup.exe windows/README.txt
 
 rm -rf windows/Output/
 rm -rf tmp/
+
+# windows 64
+
+unzip wrapper-windows-x86-64-*.zip
+cp wrapper_*_src/bin/wrapper.exe wrapper/bin/wrapper-windows-x86-32.exe
+cp wrapper_*_src/lib/wrapper.dll wrapper/lib/wrapper-windows-x86-32.dll
+cp wrapper_*_src/lib/wrapper.jar wrapper/lib/wrapper.jar
+rm -rf wrapper_*_src
+
+wine app/ISCC.exe windows/traccar.iss
+
+zip -j traccar-windows-64-$1.zip windows/Output/setup.exe windows/README.txt
+
+rm -rf windows/Output/
+rm -rf tmp/
+
 rm -rf app/
 
 # LINIX PACKAGE

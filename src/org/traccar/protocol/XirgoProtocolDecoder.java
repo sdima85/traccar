@@ -15,60 +15,58 @@
  */
 package org.traccar.protocol;
 
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.traccar.BaseProtocolDecoder;
-import org.traccar.database.DataManager;
-import org.traccar.helper.Log;
-import org.traccar.model.ExtendedInfoFormatter;
-import org.traccar.model.Position;
-
-import java.text.ParseException;
+import java.net.SocketAddress;
 import java.util.Calendar;
 import java.util.Properties;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class Xt013ProtocolDecoder extends BaseProtocolDecoder {
+import org.jboss.netty.channel.Channel;
+import org.jboss.netty.channel.ChannelHandlerContext;
 
-    public Xt013ProtocolDecoder(DataManager dataManager, String protocol, Properties properties) {
+import org.traccar.BaseProtocolDecoder;
+import org.traccar.database.DataManager;
+import org.traccar.helper.Log;
+import org.traccar.model.ExtendedInfoFormatter;
+import org.traccar.model.Position;
+
+public class XirgoProtocolDecoder extends BaseProtocolDecoder {
+
+    public XirgoProtocolDecoder(DataManager dataManager, String protocol, Properties properties) {
         super(dataManager, protocol, properties);
     }
 
     private static final Pattern pattern = Pattern.compile(
-            "(?:HI,\\d+)?" +
-            "TK," +
+            "\\$\\$" +
             "(\\d+)," +                         // IMEI
-            "(\\d{2})(\\d{2})(\\d{2})" +        // Date (YYMMDD)
-            "(\\d{2})(\\d{2})(\\d{2})," +       // Time (HHMMSS)
-            "([+-]\\d+\\.\\d+)," +              // Latitude
-            "([+-]\\d+\\.\\d+)," +              // Longitude
-            "(\\d+)," +                         // Speed
-            "(\\d+)," +                         // Course
-            "\\d+," +
-            "(\\d+)," +                         // Altitude
-            "([FL])," +                         // GPS fix
-            "\\d+," +
-            "(\\d+)," +                         // GPS level
-            "\\p{XDigit}+," +
-            "\\p{XDigit}+," +
-            "(\\d+)," +                         // GSM level
-            "[^,]*," +
+            "(\\d+)," +                         // Event
+            "(\\d{4})/(\\d{2})/(\\d{2})," +     // Date
+            "(\\d{2}):(\\d{2}):(\\d{2})," +     // Time
+            "(-?\\d+\\.?\\d*)," +               // Latitude
+            "(-?\\d+\\.?\\d*)," +               // Longitude
+            "(-?\\d+\\.?\\d*)," +               // Altitude
+            "(\\d+\\.?\\d*)," +                 // Speed
+            "(\\d+\\.?\\d*)," +                 // Course
+            "(\\d+)," +                         // Satellites
+            "(\\d+)," +                         // HDOP
             "(\\d+\\.\\d+)," +                  // Battery
-            "(\\d)," +                          // Charging
+            "(\\d+)," +                         // GSM
+            "(\\d+\\.?\\d*)," +                 // Milage
+            "(\\d+)," +                         // GPS
             ".*");
 
     @Override
     protected Object decode(
-            ChannelHandlerContext ctx, Channel channel, Object msg)
+            ChannelHandlerContext ctx, Channel channel, SocketAddress remoteAddress, Object msg)
             throws Exception {
 
-        // Parse message
         String sentence = (String) msg;
+
+        // Parse message
         Matcher parser = pattern.matcher(sentence);
         if (!parser.matches()) {
-            throw new ParseException(null, 0);
+            return null;
         }
 
         // Create new position
@@ -77,7 +75,7 @@ public class Xt013ProtocolDecoder extends BaseProtocolDecoder {
 
         Integer index = 1;
 
-        // Identify device
+        // Get device by IMEI
         String imei = parser.group(index++);
         try {
             position.setDeviceId(getDataManager().getDeviceByImei(imei).getId());
@@ -86,10 +84,12 @@ public class Xt013ProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        // Time
+        extendedInfo.set("event", parser.group(index++));
+        
+        // Date
         Calendar time = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         time.clear();
-        time.set(Calendar.YEAR, 2000 + Integer.valueOf(parser.group(index++)));
+        time.set(Calendar.YEAR, Integer.valueOf(parser.group(index++)));
         time.set(Calendar.MONTH, Integer.valueOf(parser.group(index++)) - 1);
         time.set(Calendar.DAY_OF_MONTH, Integer.valueOf(parser.group(index++)));
         time.set(Calendar.HOUR_OF_DAY, Integer.valueOf(parser.group(index++)));
@@ -100,18 +100,23 @@ public class Xt013ProtocolDecoder extends BaseProtocolDecoder {
         // Location
         position.setLatitude(Double.valueOf(parser.group(index++)));
         position.setLongitude(Double.valueOf(parser.group(index++)));
-        position.setSpeed(Double.valueOf(parser.group(index++)) * 0.539957);
-        position.setCourse(Double.valueOf(parser.group(index++)));
         position.setAltitude(Double.valueOf(parser.group(index++)));
-        position.setValid(parser.group(index++).equals("F"));
+        position.setSpeed(Double.valueOf(parser.group(index++)) * 0.868976);
+        position.setCourse(Double.valueOf(parser.group(index++)));
 
-        // Other
-        extendedInfo.set("gps", parser.group(index++));
-        extendedInfo.set("gsm", parser.group(index++));
+        // Additional data
+        extendedInfo.set("satellites", parser.group(index++));
+        extendedInfo.set("hdop", parser.group(index++));
         extendedInfo.set("battery", parser.group(index++));
-        extendedInfo.set("charging", parser.group(index++));
+        extendedInfo.set("gsm", parser.group(index++));
+        extendedInfo.set("milage", parser.group(index++));
+        
+        // Validity
+        position.setValid(Integer.valueOf(parser.group(index++)) == 1);
 
+        // Extended info
         position.setExtendedInfo(extendedInfo.toString());
+
         return position;
     }
 
